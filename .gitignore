@@ -1,0 +1,6 @@
+tmp*
+__pycache__
+hf_cache
+scripts
+setup/det.yaml
+res*/
