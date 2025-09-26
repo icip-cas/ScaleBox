@@ -658,6 +658,48 @@ Then, add the following to your MCP client:
 }
 ```
 
+## 🧪 Sandbox Eval
+
+An evaluation framework that uses the sandbox within this codebase for assessment.
+
+### ⚙️ Sandbox Eval Usage Guide
+
+Environment Setup.
+
+```bash
+conda create --name sandbox_eval python=3.9 -y
+conda activate sandbox_eval
+
+pip install -r requirements.txt
+```
+
+Quick Start.
+
+First, create a JSON parameter file in the config directory, which includes benchmark parameter settings and model inference parameter settings.
+
+Then run the following code for evaluation.
+```bash
+python3 sandbox.py --dataset_config config/livecodebench-qwen3-4b.json
+python3 sandbox.py --dataset_config config/livecodebench-qwen2.5-1.5b-distill.json
+python3 sandbox.py --dataset_config config/humaneval-llama3.1-8b-ins.json
+python3 sandbox.py --dataset_config config/mbpp-llama3.1-8b-ins.json
+```
+
+Note, MBPP and MBPP+, HumanEval and HumanEval+ only use different datasets, to evaluate different datasets please manually modify the data address.
+
+### 📊 Evaluation results
+
+| Model | HumanEval | MBPP | HumanEval+ | MBPP+ |
+|-------|-----------|------|------------|-------|
+| Llama3-8B-Ins | 61.59 | 66.93 | 57.32 | 55.56 |
+| Llama3.1-8B-Ins | 69.51 | 71.95 | 65.24 | 60.05 |
+
+
+| Model | LiveCodeBench |
+|-------|---------------|
+| Qwen2.5-1.5B-Distill | 16.13 |
+| Qwen3-4B | 52.41 |
+
 ## 📚 Logging
 ### ⚠️ Error Programs Recording
 Enable by setting `SAVE_BAD_CASES` to `true` in the environment variables, and disabled by default.
