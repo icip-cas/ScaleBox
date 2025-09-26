@@ -234,7 +234,7 @@ dataset_map = {
     'rust': 'multiple_rs',
     'scala': 'multiple_scala',
     'swift': 'multiple_swift',
-    'ruby': 'multiple_ruby',
+    'ruby': 'multiple_rb',
     'd': 'multiple_d',
     'julia': 'multiple_jl',
 }
