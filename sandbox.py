@@ -24,21 +24,16 @@ import aiohttp
 
 def test_assert(url):
     payload = {
-        "completion": "```python\nn = int(input())\na = list(map(int, input().split()))\nsorted_desc = sorted(a, reverse=True)\nsecond_largest = sorted_desc[1]\nindex = a.index(second_largest) + 1\nprint(index)\n```",
-        "config": {
-            "language": "python",
-            "provided_data": { 
-                "test_cases": {
-                    "type": "stdin_stdout", 
-                    "input": ["8\n1 2 3 4 5 10 9 11\n"], 
-                    "output": ["6\n"],        
-                    "fn_name": None, 
-                }   
+    "completion": "```python\nimport re\ndef text_match_three(text):\n        patterns = 'ab{3}?'\n        return re.search(patterns,  text)\n```",
+    "config": {
+        "language": "python",
+        "provided_data": { 
+            "test_cases": {
+                "type": "assert", 
+                "test":  "def check(text_match_three):\n    assert not text_match_three(\"ac\")", 
+                "entry_point": "text_match_three",
+                },            
             },
-            "extra": {
-                "run_all_cases": True,
-                "total_timeout": 10
-            }
         }
     }
     response = requests.post(url, json=payload)
@@ -46,7 +41,6 @@ def test_assert(url):
     print(json.dumps(result, indent=2))
     assert result['accepted'] == True
 
-# 实现并行
 async def get_sandbox_result(dataset_type, data, completion, config, url, session):
     payload = {}
     provided_data = {}
@@ -55,12 +49,19 @@ async def get_sandbox_result(dataset_type, data, completion, config, url, sessio
 
     if dataset_type == "MultiPLEDataset":
         config_copy["language"] = data['language']
-        
+
+    if dataset_type == "MBPPDataset":
+        config_copy["language"] = "python"
+
+    if dataset_type == "HumanEvalDataset":
+        config_copy["language"] = "python"
+
     if dataset_type == "LiveCodeBenchDataset":
         config_copy["language"] = "python"
-        provided_data["test_cases"] = data['test']
-        config_copy["provided_data"] = provided_data
-        payload["config"] = config_copy
+
+    provided_data["test_cases"] = data['test']
+    config_copy["provided_data"] = provided_data
+    payload["config"] = config_copy
 
     async with session.post(url, json=payload) as response:
         res = await response.json()
@@ -69,26 +70,30 @@ async def get_sandbox_result(dataset_type, data, completion, config, url, sessio
 MAX_CONCURRENCY = 32
 
 async def _eval_one(raw_completion, info, args, data_i, config, session):
-    # 保持你原先的后处理逻辑
     if args.reasoning_model:
         completion = re.split(r"</think>\s*", raw_completion)[-1]
     else:
         completion = raw_completion
-    
-    # 后处理部分
-    # if info["datasetType"] == "MultiPLEDataset":
-    #     m = re.search(r"```.*?```", completion, re.S)
-    # else:
-    #     m = re.search(r"```python\s*(.*?)```", completion, re.S)
-    # completion = m.group(0) if m else None
+
     outputlines = completion.split("\n")
     indexlines = [i for i, line in enumerate(outputlines) if "```" in line]
     if len(indexlines) < 2:
-        completion = None
+        if "```" not in completion and "def" in completion:
+            if 'language' in data_i:
+                completion = f"```{data_i['language']}\n"+completion+"\n```\n"
+            else:
+                completion = "```python\n"+completion+"\n```\n"
+        else:
+            completion = None
     else:
-        start = indexlines[-2]
-        end = indexlines[-1]
-        completion = "\n".join(outputlines[start : end + 1])
+        for i in range(len(indexlines) - 1, 0, -1):
+            start = indexlines[i-1]
+            end = indexlines[i]
+            temp_completion = "\n".join(outputlines[start : end + 1])
+            
+            if "def" in temp_completion:
+                completion = temp_completion
+                break
 
     if completion is not None:
         try:
@@ -105,12 +110,11 @@ async def evaluate_all_async(results, info, data, config, args):
     results_sandbox = []
     accepted_sandbox = []
 
-    timeout = aiohttp.ClientTimeout(total=60)  # 按需调整
+    timeout = aiohttp.ClientTimeout(total=60)
     sem = asyncio.Semaphore(MAX_CONCURRENCY)
 
     async with aiohttp.ClientSession(timeout=timeout) as session:
         for instance_idx, completions in enumerate(results):
-            # 针对同一个 instance 内的样本并行跑
             tasks = []
             for raw_completion in completions:
                 async def _task(rc=raw_completion, idx=instance_idx):
@@ -147,7 +151,6 @@ args = argparser.parse_args()
 with open(args.dataset_config, "r", encoding="utf-8") as file:
     dataset_config = json.load(file)
 
-# 用于收集所有子数据集的accepted结果
 all_accepted_results = defaultdict(lambda: defaultdict(dict))
 
 for dataset_name, info in dataset_config.items():
@@ -174,8 +177,7 @@ for dataset_name, info in dataset_config.items():
     config['extra']['run_all_cases'] = True
 
     for sub_dataset in info["datasets"]:
-        # 这里dataset_idf指明是什么语言种类的数据 idf是identifier(标识符)
-        if info["datasetType"] == "MultiPLEDataset": # 这里是如果评测数据是多语言数据
+        if info["datasetType"] == "MultiPLEDataset":
             dataset_idf = "multiple_" + sub_dataset["huggingFace"]["subset"].split("-")[-1]
         else:
             dataset_idf = sub_dataset["dataset"]
@@ -183,9 +185,6 @@ for dataset_name, info in dataset_config.items():
         prompts, data = get_template_data(sub_dataset, info["datasetType"], args.prompt_type, args.reasoning_model)
         print("###len(data)###", len(data))
 
-        # 上面数据已经处理好了,接下来是开始调用model进行推理
-
-        # 如果data[0]中有stop_tokens，则将stop_tokens保存到args.stop_token
         if 'stop_tokens' in data[0]:
             args.stop_token = ','.join(data[0]['stop_tokens'])
         print("###args.stop_token###",args.stop_token)
@@ -199,46 +198,11 @@ for dataset_name, info in dataset_config.items():
         elapsed_s = time.perf_counter() - start
         elapsed_min = elapsed_s / 60
         print(f"sandbox耗时:{elapsed_min:.2f} 分钟")
-        # # 数据后处理并调用sandbox进行评测
-        # results_sandbox = []
-        # accepted_sandbox = []
-        # for instance_idx, completions in enumerate(results):
-        #     tmp_res = []
-        #     tmp_accepted = []
-        #     for sample_idx, raw_completion in enumerate(completions):
-
-        #         if args.reasoning_model:
-        #             # For reasoning model, remove text before '</think>'.
-        #             completion = re.sub(r".*</think>\n*", "", raw_completion, flags=re.DOTALL)
-        #         else:
-        #             completion = raw_completion
-                
-        #         if info["datasetType"] == "MultiPLEDataset":
-        #             m = re.search(r"```.*?```", completion, re.S)
-        #             completion = m.group(0) if m else None
-        #         else:
-        #             m = re.search(r"```python\s*(.*?)```", completion, re.S)
-        #             completion = m.group(0) if m else None
-
-        #         if completion is not None:
-        #             res = get_sandbox_result(info["datasetType"], data[instance_idx], completion, config, args.endpoint)
-        #         else:
-        #             res = {'accepted': False}
-        #         res['llm_raw_completion'] = raw_completion
-
-        #         tmp_accepted.append(res['accepted'])
-        #         tmp_res.append(res)
-
-        #     results_sandbox.append(tmp_res)
-        #     accepted_sandbox.append(tmp_accepted)
-
-        # 将results_sandbox保存到output_path
         res_output_path = os.path.join(args.output_dir, dataset_idf + ".jsonl")
         with open(res_output_path, "w", encoding="utf-8") as f:
             for res in results_sandbox:
                 f.write(json.dumps(res, ensure_ascii=False) + "\n")
         
-        # 计算accepted_sandbox的准确率
         avg_acc = 0
         for sample_idx in range(len(accepted_sandbox[0])):
             accepted_count = 0
@@ -253,11 +217,9 @@ for dataset_name, info in dataset_config.items():
         avg_acc /= len(accepted_sandbox[0])
         all_accepted_results[dataset_name][sub_dataset['id']]["avg_acc"] = avg_acc
 
-# 最后将all_accepted_results保存到文件
 with open(os.path.join(args.output_dir, "accuracy.json"), "w", encoding="utf-8") as f:
     json.dump(all_accepted_results, f, ensure_ascii=False, indent=4)
 
-# 最后将all_accepted_results中所有dataset_name中的sub_dataset中的avg_acc在命令行中显示出来
 for dataset_name in all_accepted_results:
     print(f"{dataset_name}")
     for sub_dataset in all_accepted_results[dataset_name]:

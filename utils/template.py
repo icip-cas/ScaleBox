@@ -2,7 +2,9 @@ from dataclasses import dataclass, field
 from typing import List, Tuple, Dict, Any, Optional
 from enum import Enum
 from datasets import load_dataset
-from utils.livecodebench.generation import load_code_generation_dataset
+from utils.livecodebench.generation import load_code_generation_dataset, load_code_cpp_generation_dataset
+import re
+import polars as pl
 
 class Role(Enum):
     SYSTEM = "system"
@@ -29,14 +31,15 @@ class ConversationTemplate:
 
 language_mappings = {
     "cs": "csharp",
-    "ts": "typescript",
-    "sh": "bash",
+    "jl": "julia",
     "js": "nodejs",
     "pl": "perl",
+    "rb": "ruby",
     "rkt": "racket",
     "rs": "rust",
-    "rb": "ruby",
-    "jl": "julia"
+    "sh": "bash",
+    "ts": "typescript",
+    "go_test.go": "go"
 }
 
 TEMPLATES = {
@@ -88,6 +91,22 @@ TEMPLATES = {
         offset=0,
         stop_str="<｜end▁of▁sentence｜>",
     ),
+    "llama-3-instruct": ConversationTemplate(
+        name="llama-3-instruct",
+        role_starts={
+            Role.SYSTEM: "<|start_header_id|>system<|end_header_id|>\n\n",
+            Role.HUMAN: "<|start_header_id|>user<|end_header_id|>\n\n",
+            Role.ASSISTANT: "<|start_header_id|>assistant<|end_header_id|>\n\n",
+        },
+        role_ends={
+            Role.SYSTEM: "<|eot_id|>",
+            Role.HUMAN: "<|eot_id|>",
+            Role.ASSISTANT: "<|eot_id|>",
+        },
+        default_system_message="",
+        offset=0,
+        stop_str="<|eot_id|>",
+    ),
 }
 
 # load lcb dataset
@@ -107,7 +126,93 @@ def load_lcb_dataset(dataset):
         })
     return data
 
-# 不同数据集的模板
+def load_multiple_dataset(dataset):
+    raw_data = load_dataset(
+        "json",
+        data_files=f"data/MultiPL-E/{dataset['huggingFace']['subset']}.jsonl"
+    )["train"]
+    data = []
+    for id, sample in enumerate(raw_data):
+        language = sample['language']
+        if language in language_mappings:
+            language = language_mappings[language]
+        data.append({
+            "id": id+1,
+            "raw_data": sample,
+            "prompt": sample['prompt'],
+            "language": language,
+            "test": {"type": "assert", "tests": sample['tests'], "stop_tokens": sample['stop_tokens']},
+        })
+    return data
+
+def load_mbpp_dataset(dataset):
+    raw_data = load_dataset(
+        "json",
+        data_files=f"data/FusedMBPP/mbppplus.jsonl"
+    )["train"]
+    data = []
+    for id, sample in enumerate(raw_data):
+        if "math.isclose" in sample['test_list'][0]:
+            entry_point = re.search(r"math\.isclose\((\w+)\(", sample['test_list'][0]).group(1)
+        elif "text_match_three" in sample['test_list'][0]:
+            entry_point = "text_match_three"
+        elif "is_perfect_square" in sample['test_list'][0]:
+            entry_point = "is_perfect_square"
+        elif "similar_elements" in sample['test_list'][0]:
+            entry_point = "similar_elements"
+        elif "find_char_long" in sample['test_list'][0]:
+            entry_point = "find_char_long"
+        elif "common_in_nested_lists" in sample['test_list'][0]:
+            entry_point = "common_in_nested_lists"
+        elif "extract_singly" in sample['test_list'][0]:
+            entry_point = "extract_singly"
+        elif "larg_nnum" in sample['test_list'][0]:
+            entry_point = "larg_nnum" 
+        else:   
+            entry_point = re.search(r'assert\s+([A-Za-z_]\w*)\s*\(', sample['test_list'][0]).group(1)
+        test = "def check(" + entry_point + "):\n    "
+        # test += "\n    ".join(sample['labels']['challenge_test_list'])
+        test += "\n    ".join(sample['test_list'])
+        lines = sample['code'].split('\n')
+        for i, line in enumerate(lines):
+            if entry_point in line:
+                def_line_index = i
+                break
+        result_lines = lines[def_line_index:def_line_index + 1]
+        prefix_template = '\n'.join(result_lines)
+        if "test" in sample:
+            data.append({
+                "id": id+1,
+                "raw_data": sample,
+                "content": sample['prompt'],
+                "test": {"type": "assert", "test": sample['test'] + test, "entry_point": entry_point},
+                "prefix_template": prefix_template,
+            })
+        else:    
+            data.append({
+                "id": id+1,
+                "raw_data": sample,
+                "content": sample['prompt'],
+                "test": {"type": "assert", "test": test, "entry_point": entry_point},
+                "prefix_template": prefix_template,
+            })
+    return data
+
+def load_humaneval_dataset(dataset):
+    raw_data = load_dataset(
+        "json",
+        data_files=f"data/openai_humaneval/humanevalplus.jsonl"
+    )["train"]
+    data = []
+    for id, sample in enumerate(raw_data):
+        data.append({
+            "id": id+1,
+            "raw_data": sample,
+            "prompt": sample['prompt'],
+            "test": {"type": "assert", "test": sample['test'], "entry_point": sample['entry_point']},
+        })
+    return data
+
 def get_lcb_prompt(
     question, prompt_type, think
 ) -> str:
@@ -142,6 +247,7 @@ def get_lcb_prompt(
 def get_mbpp_prompt(
     instance, prompt_type, think
 ) -> str:
+    instruction_prefix = "Please provide a self-contained Python script that solves the following problem in a markdown code block:\"\"\"\n"
     temp_obj = TEMPLATES[prompt_type]
     full_prompt = ""
     if temp_obj.default_system_message != "":
@@ -149,7 +255,8 @@ def get_mbpp_prompt(
         full_prompt += temp_obj.default_system_message
         full_prompt += temp_obj.role_ends[Role.SYSTEM]
     full_prompt += temp_obj.role_starts[Role.HUMAN]
-    full_prompt += f"You are an expert Python programmer, and here is your task: {instance['content']} Your code should pass these tests:\n\n{instance['test_list'][0]}\n{instance['test_list'][1]}"
+    test_list = "\n".join(instance['raw_data']['test_list'])
+    full_prompt += instruction_prefix + instance['content'] + "\n" + instance['raw_data']['test_list'][0] + "\n\"\"\"\n"
     full_prompt += temp_obj.role_ends[Role.HUMAN]
     full_prompt += temp_obj.role_starts[Role.ASSISTANT]
     if think:
@@ -167,7 +274,7 @@ def get_humaneval_prompt(
         full_prompt += temp_obj.role_ends[Role.SYSTEM]
     full_prompt += temp_obj.role_starts[Role.HUMAN]
     full_prompt += "Complete the following python code:\n"
-    full_prompt += instance['prompt']
+    full_prompt += instance['prompt'] + "You should submit your final solution in the following format: ```python\n\n```"
     full_prompt += temp_obj.role_ends[Role.HUMAN]
     full_prompt += temp_obj.role_starts[Role.ASSISTANT]
     if think:
@@ -195,26 +302,15 @@ def get_multiple_prompt(
     return full_prompt
 
 def get_template_data(dataset, dataset_type, prompt_type, reasoning_model):
-    # 获取数据
     if dataset_type == "LiveCodeBenchDataset":
         data = load_lcb_dataset(dataset)
     elif dataset_type == "MultiPLEDataset":
-        data = load_dataset(
-            "json",
-            data_files=f"data/MultiPL-E/{dataset['huggingFace']['subset']}.jsonl"
-        )["train"]
+        data = load_multiple_dataset(dataset)
     elif dataset_type == "MBPPDataset":
-        data = load_dataset(
-            "json",
-            data_files=f"data/FusedMBPP/test_mbpp.jsonl"
-        )["train"]
+        data = load_mbpp_dataset(dataset)
     elif dataset_type == "HumanEvalDataset":
-        data = load_dataset(
-            "json",
-            data_files=f"data/openai_humaneval/humaneval.jsonl"
-        )["train"]
+        data = load_humaneval_dataset(dataset)
     
-    # 给数据套模板
     prompts = []
     for instance in data:
         if dataset_type == "LiveCodeBenchDataset":
