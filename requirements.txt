@@ -1,0 +1,15 @@
+sandbox-fusion
+fastapi
+aiofiles
+structlog
+pyyaml
+psutil
+pydantic
+anthropic
+urllib3
+aiohttp
+transformers
+jinja2
+datasets==2.14.7
+black
+vllm
