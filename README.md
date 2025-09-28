@@ -604,7 +604,7 @@ make test
 Run the test of `common_evaluate_batch` API:
 ```bash
 export URL="http://0.0.0.0:8080"
-make test-case CASE=test_sandbox_common_evaluate
+PYTHONPATH=$(pwd):$PYTHONPATH pytest -s -vv -k test_sandbox_common_evaluate
 ```
 
 Run a specific unit test (allows you to see stdout):
@@ -668,6 +668,7 @@ First, create a JSON parameter file in the config directory, which includes benc
 
 Then run the following code for evaluation.
 ```bash
+cd eval
 python3 sandbox.py --dataset_config config/livecodebench-qwen3-4b.json
 python3 sandbox.py --dataset_config config/livecodebench-qwen2.5-1.5b-distill.json
 python3 sandbox.py --dataset_config config/humaneval-llama3.1-8b-ins.json
