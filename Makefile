@@ -2,7 +2,7 @@ SHELL = /bin/bash
 HOST ?= $(shell hostname -I | awk '{print $$1}')
 PORT ?= 8080
 TEST_NP ?= 4
-WORKERS ?= 4
+WORKERS ?= 32
 MAX_MEM ?= unlimited
 run:
 	uvicorn sandbox.server.server:app --reload --host $(HOST) --port $(PORT)

@@ -1,7 +1,11 @@
 import requests
 import json
+import os 
 
-URL = "http://172.17.0.2:8080"
+# obtain local address
+local_ip = os.popen("hostname -I | awk '{print $1}'").read().strip()
+
+URL = f"http://{local_ip}:8080"
 def stdio_batch_evaluate(completion, language):
     payload = {
         "completion": f"""```{language}\n{completion}\n```""",

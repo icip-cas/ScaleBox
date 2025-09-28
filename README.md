@@ -1,41 +1,44 @@
-# ICIP Sandbox
+# ScaleBox
 
-<p align="center"><img src="logo.png" alt="ICIP Sandbox Logo" width="600"></p>
+<p align="center"><img src="logo.png" alt="ICIP Sandbox Logo" width="200"></p>
 
-⚡ A scalable sandbox for better accommodation of code-RL training | 🛡️ Secure | 🌐 Multi-language | 🔥 Fast
+⚡ A scalable sandbox for distributed code execution, RL training and unified benchmarking | 🛡️ Secure | 🌐 Multi-language | 🔥 Fast
 
 ## 📋 Table of Contents
-- [✨ Updates](#updates)
+- [✨ Highlights](#highlights)
 - [🎯 Features](#features)
 - [🚀 Usage](#usage)
 - [📝 Citation](#citation)
 - [🙏 Acknowledgement](#acknowledgement)
 - [📄 License](#license)
 
-## ✨ Updates
+## ✨ Highlights
+
+### Distributed Execution
+- **Efficiency optimization ([report](efficency_test.md) )**
+    - Distributed deployment: Support for large-scale multi-machine distributed sandbox deployment and load-balanced requests
+    - Full parallelization: Support for unit test parallelization and instance-level parallelization
+    - Easy to deploy: Support rapid script-based setup, flexible node management, and real-time service monitoring
 
 ### RL Training
 - **Full compatibility with mainstream RL frameworks**
   - Support for NVIDIA environment with [verl](verl_compatibility.md), and Ascend NPU environment with [verl](https://github.com/volcengine/verl?tab=readme-ov-file) and [MindSpeed-RL](https://github.com/jszheng21/MindSpeed-RL/blob/master/README_adaptation.md)
   - Support for mixed Docker environment with RL training and sandbox calls, enabling [one-click deployment and RL training](deploy/start_verl_sandbox.sh)
-- **Efficiency optimization ([report](efficency_test.md) )**
-  - Distributed deployment: Support for large-scale multi-machine distributed sandbox deployment and load-balanced requests
-  - Full parallelization: Support for unit test parallelization and instance-level parallelization
+
 - **Unified interface**: Support for common code RL training data unified request interface
   - Stdin-out (including special judge)
   - Function call
   - Assert (MultiPL-E format)
+
 - **Better monitoring and management**
   - Error monitoring
   - Nginx logs
   - Auto restart
 
-### Code LLM Evaluation
+### Unified Evaluation
 - **Simple-to-use evaluation for common code benchmarks**
-  - Support for high-efficiency distributed inference
-  - Support for long reasoning models
-  - Support for multiple sampling with averaging
-  - One-click evaluation of multiple models and benchmarks by simply modifying configuration files
+  - Easy-to-use: One-click evaluation of multiple models and benchmarks by simply modifying configuration files
+  - Highly Efficiency: Support for high-efficiency distributed inference and evaluation for both instruct and reasoning models
 
 ### Sandbox Usability
 - Parameter configuration
@@ -122,8 +125,8 @@ Before deployment, configure the following environment variables:
 # Server configuration
 export HOST=0.0.0.0           # Server host address
 export PORT=8080              # Server port
-export WORKERS=4              # Number of parallel workers for uvicorn (set 1 for single CPU)
-export MAX_MEM=500000        # Maximum memory limit per process in KB (500MB), or 'unlimited'
+export WORKERS=32              # Number of parallel workers for uvicorn (set 1 for single CPU)
+export MAX_MEM=50000000        # Maximum memory limit per process in KB (50GB), or 'unlimited'
 export SAVE_BAD_CASES=false  # Set 'true' to save bad cases for debugging in 'output/{datetime}/'
 ```
 
@@ -139,26 +142,12 @@ bash deploy/start_sandbox_with_supervisor.sh
 ```
 
 #### 🌍 Distributed Deployment
-For running the sandbox across multiple machines:
+Running the following command, then by checking `MASTER_IP` it will deploy nginx on the main node, and deploy sandbox on each worker node:
 
-1. **Main Node Setup** (Load Balancer)
-   ```bash
-   # On the main node (acts as load balancer)
-   export PORT=8081              # nginx will run on this port
-   bash deploy/start_distributed_nginx.sh
-   ```
-
-2. **Worker Node Setup**
-   ```bash
-   # On each worker node
-   export HOST=0.0.0.0
-   export PORT=8080              # Worker nodes run on port 8080
-   export WORKERS=4              # Adjust based on CPU cores
-   export MAX_MEM=500000        # Adjust based on available memory
-   export SAVE_BAD_CASES=false
-
-   make run-distributed
-   ```
+```bash
+export NGINX_PORT=8081              # nginx will run on this port
+bash deploy/start_distributed.sh
+```
 
 #### 📈 Scaling the Distributed Setup
 - To add or remove worker nodes:

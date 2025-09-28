@@ -4,7 +4,7 @@ We evaluated the performance of our sandbox API against prime_code local evaluat
 
 ### Dataset
 - **Source**: PrimeIntellect/verifiable-coding-problems
-- **Sample Size**: 2,048 Python problem instances with reference code
+- **Sample Size**: 2,048 / 4.096 / 8,192 Python problem instances with reference code
 
 ### Hardware Environment
 - **CPU**: Intel Xeon Platinum 8378A @ 3.00GHz
@@ -21,11 +21,34 @@ We evaluated the performance of our sandbox API against prime_code local evaluat
 
 ## Performance Results
 
-Our results demonstrate that the sandbox API achieves a **14.57% performance improvement** over the baseline, with the ability to scale linearly across multiple nodes. With two sandbox nodes, we achieved a **38.29% reduction** in evaluation time.
+Our results demonstrate that the sandbox API achieves a **14.57% performance improvement** over the baseline and **36.31% performance improvement** over the `run_code` API. Compared with `run_code` API which send each unit test seperately, our `common_evaluate_batch` API pack the whole test cases, and is more efficent. Our sandbox also scales linearly across multiple nodes. With two sandbox nodes, we achieved a **38.29% reduction** in evaluation time. 
 
-| Evaluation Method | Time (s) | Speed-up | Client Concurrency | Workers | Total CPU Cores |
-|-------------------|----------|----------|-------------------|---------|-----------------|
-| **Baseline** (No Sandbox) | 164.89 | - | 128 | - | 128 |
-| **Sandbox** (1 node) | 140.86 | 14.57% | 128 | 32 | 128 |
-| **Sandbox** (2 nodes) | 86.93 | 47.28% | 128 | 64 | 256 |
-| **Sandbox** (3 nodes) | 66.84 | 58.06% | 128 | 96 | 384 |
+### 2048 Cases
+
+| Evaluation Method | Time (s) | Client Concurrency | Workers | Total CPU Cores |
+|-------------------|----------|-------------------|---------|-----------------|
+| **Baseline** (No Sandbox) | 164.89 | 128 | - | 128 |
+| **Sandbox/run_code** (1 node) | 221.18 | 128 | 32 | 128 |
+| **Sandbox/common_evaluate_batch** (1 node) | 140.86 | 128 | 32 | 128 |
+| **Sandbox/common_evaluate_batch** (2 nodes) | 86.93 | 128 | 64 | 256 |
+| **Sandbox/common_evaluate_batch** (3 nodes) | 66.84 | 128 | 96 | 384 |
+
+### 4096 Cases
+
+| Evaluation Method | Time (s) | Client Concurrency | Workers | Total CPU Cores |
+|-------------------|----------|-------------------|---------|-----------------|
+| **Baseline** (No Sandbox) | 297.03 | 128 | - | 128 |
+| **Sandbox/run_code** (1 node) | 516.16 | 128 | 128 | 128 |
+| **Sandbox/common_evaluate_batch** (1 node) | 181.74 | 128 | 32 | 128 |
+| **Sandbox/common_evaluate_batch** (2 nodes) | 155.21 | 128 | 64 | 256 |
+| **Sandbox/common_evaluate_batch** (3 nodes) | 118.80 | 128 | 96 | 384 |
+
+### 8192 Cases
+
+| Evaluation Method | Time (s) | Client Concurrency | Workers | Total CPU Cores |
+|-------------------|----------|-------------------|---------|-----------------|
+| **Baseline** (No Sandbox) | 556.48 | 128 | - | 128 |
+| **Sandbox/run_code** (1 node) | 989.05 | 128 | 128 | 128 |
+| **Sandbox/common_evaluate_batch** (1 node) | 324.01 | 128 | 32 | 128 |
+| **Sandbox/common_evaluate_batch** (2 nodes) | 258.85 | 128 | 64 | 256 |
+| **Sandbox/common_evaluate_batch** (3 nodes) | 183.8 | 128 | 96 | 384 |

@@ -1,44 +1,13 @@
       
 #!/bin/bash
+# Using the docker image of `zhengxin1999/verl-sandbox:v1` or build by `scripts/Dockerfile.verl`
+# Set environment variables `RANK` and `WORLD_SIZE` 
+# Login wandb
+
 export VLLM_ATTENTION_BACKEND=XFORMERS
 
-project_path=~/verl
-sandbox_path=~/icip-sandbox
-pip install -e ${project_path}
-pip install liger_kernel==0.5.5
-pip install math-verify==0.7.0
-pip install antlr4-python3-runtime==4.9.3
-pip install nvidia-cublas-cu12==12.4.5.8
-pip uninstall -y megatron_core
-pip install pyext==0.7
-pip install pebble
-pip install vertexai
-pip install sandbox_fusion
-pip install sentence_transformers
-pip install pytest
-
-export RAY_DEBUG=legacy
-export GLOO_SOCKET_IFNAME=bond1
-export NCCL_SOCKET_IFNAME=bond1
-
-export NCCL_IB_GID_INDEX=3
-export NCCL_IB_SL=3
-export NCCL_CHECK_DISABLE=1
-export NCCL_P2P_DISABLE=0
-export NCCL_IB_DISABLE=0
-export NCCL_LL_THRESHOLD=16384
-export NCCL_IB_CUDA_SUPPORT=1
-export NCCL_SOCKET_IFNAME=bond1
-export UCX_NET_DEVICES=bond1
-export NCCL_IB_HCA=mlx5_bond_1,mlx5_bond_5,mlx5_bond_3,mlx5_bond_7,mlx5_bond_4,mlx5_bond_8,mlx5_bond_2,mlx5_bond_6
-export NCCL_COLLNET_ENABLE=0
-export SHARP_COLL_ENABLE_SAT=0
-export NCCL_NET_GDR_LEVEL=2
-export NCCL_IB_QPS_PER_CONNECTION=4
-export NCCL_IB_TC=160
-export NCCL_PXN_DISABLE=0
-export NCCL_IB_TIMEOUT=22
-
+project_path=$HOME/verl
+sandbox_path=$HOME/icip-sandbox
 
 
 check_port() {
@@ -68,7 +37,8 @@ else
     echo "Directory $SERVER_DIR already exists."
 fi
 
-if [ "$RANK" -ne 0 ]; then
+if [ "$WORLD_SIZE" -eq 1 ] || [ "$RANK" -ne 0 ]; then
+    echo "Starting sandbox server on rank $RANK..."
     source ~/miniconda3/bin/activate
     source activate sandbox
     make run-distributed > $SERVER_DIR/sandbox_$RANK.log 2>&1 &
@@ -202,7 +172,7 @@ echo "Ray started on rank $RANK"
 # RL Training
 #############################################################
 cd ${project_path}
-
+mkdir -p logs
 
 
 current_time=$(date +"%m%d%H%M")
@@ -211,6 +181,7 @@ current_time=$(date +"%m%d%H%M")
 # wandb offline
 
 export SANDBOX_ENDPOINT='http://localhost:8082'
+alias python='/usr/bin/python'
 
 if [ $RANK -eq 0 ]; then
 
@@ -225,12 +196,14 @@ if [ $RANK -eq 0 ]; then
     overlong_buffer_len=$((1024 * 4))
 
     export MODEL_PATH="deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
-    export OUTPUT_DIR="~/verl/checkpoints/fusion_prime_7b_single_distill-mb32-t0.9-cr0.2-${current_time}"
+    export OUTPUT_DIR="${project_path}/checkpoints/fusion_prime_7b_single_distill-mb32-t0.9-cr0.2-${current_time}"
+    export TRAIN_FILES="[YOUR_TRAIN_FILE_PATH]"
+    export VAL_FILES="[YOUR_VAL_FILE_PATH]"
 
-    PYTHONUNBUFFERED=1 python3 -m verl.trainer.main_ppo \
+    PYTHONUNBUFFERED=1 /usr/bin/python -m verl.trainer.main_ppo \
     algorithm.adv_estimator=grpo \
-    data.train_files="[TRAIN_FILES]" \
-    data.val_files="[VAL_FILES]" \
+    data.train_files=${TRAIN_FILES} \
+    data.val_files=${VAL_FILES} \
     data.train_batch_size=1024 \
     data.val_batch_size=32 \
     data.max_prompt_length=${max_prompt_length} \
@@ -277,8 +250,6 @@ if [ $RANK -eq 0 ]; then
     trainer.default_local_dir=${OUTPUT_DIR} \
     data.filter_overlong_prompts=True \
     2>&1 | tee logs/fusion_prime_7b-mb${mini_batch_size}-t${temperature}-cr${clip_ratio}-${current_time}.log
-
-    # +actor_rollout_ref.actor.use_distributed_reward=True\
 
     echo "Training is done on rank 0, stopping Ray..."
     ray stop --force
