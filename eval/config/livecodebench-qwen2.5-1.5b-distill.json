@@ -11,7 +11,7 @@
       }
     ],
     "infer_parameters": [{
-      "model_path": "/mnt/data1/hf_models/DeepSeek-R1-Distill-Qwen-1.5B",
+      "model_path": "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
       "output_dir": "res/lcb_DeepSeek-R1-Distill-Qwen-1.5B",
       "endpoint": "http://10.0.1.3:8080/common_evaluate_batch",
       "prompt_type": "deepseek",
