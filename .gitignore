@@ -183,3 +183,5 @@ server/*.txt
 server/*.conf
 
 supervisor/logfile
+
+.history
