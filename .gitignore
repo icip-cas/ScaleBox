@@ -185,3 +185,5 @@ server/*.conf
 supervisor/logfile
 
 .history
+
+.idea
