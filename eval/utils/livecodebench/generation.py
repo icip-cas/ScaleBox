@@ -137,10 +137,34 @@ class CodeGenerationProblem:
 def load_code_generation_dataset(
     release_version="release_v1", start_date=None, end_date=None
 ) -> list[CodeGenerationProblem]:
-    # current_dir = os.path.dirname(os.path.abspath(__file__))
-    # dataset_path = os.path.join(current_dir, "..", "..", "livecodebench", "code_generation_lite")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    dataset_path = os.path.join(current_dir, "..", "..", "livecodebench", "code_generation_lite")
     dataset = load_dataset(
-        "livecodebench/code_generation_lite",
+        dataset_path,
+        split="test",
+        version_tag=release_version,
+        # trust_remote_code=True,
+    )
+    from tqdm import tqdm
+    dataset = [CodeGenerationProblem(**p) for p in tqdm(dataset, desc="Building CodeGenerationProblem")]
+    if start_date is not None:
+        p_start_date = datetime.strptime(start_date, "%Y-%m-%d")
+        dataset = [e for e in dataset if p_start_date <= e.contest_date]
+
+    if end_date is not None:
+        p_end_date = datetime.strptime(end_date, "%Y-%m-%d")
+        dataset = [e for e in dataset if e.contest_date <= p_end_date]
+
+    print(f"Loaded {len(dataset)} problems")
+    return dataset
+
+def load_code_cpp_generation_dataset(
+    release_version="release_v1", start_date=None, end_date=None
+) -> list[CodeGenerationProblem]:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    dataset_path = os.path.join(current_dir, "..", "..", "livecodebench-cpp", "code_generation_lite")
+    dataset = load_dataset(
+        dataset_path,
         split="test",
         version_tag=release_version,
         trust_remote_code=True,

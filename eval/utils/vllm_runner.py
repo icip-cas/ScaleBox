@@ -16,6 +16,7 @@ class VLLMRunner(ABC):
         self.args = args
         self.model = model
         self.model_tokenizer_path = self.args.model_path
+        self.batch_size = self.args.batch_size
         # self.llm = LLM(
         #     model=model_tokenizer_path,
         #     tokenizer=model_tokenizer_path,
@@ -41,11 +42,17 @@ class VLLMRunner(ABC):
 #############dp#############
         self.num_gpus_total = args.num_gpus_total
         self.num_gpus_per_model = args.num_gpus_per_model
+        self.use_npu = getattr(args, 'npu', False)  # 是否使用NPU
 
         self.use_ray = False
         if self.num_gpus_total // self.num_gpus_per_model > 1:
             self.use_ray = True
-            ray.init(ignore_reinit_error=True)
+            if self.use_npu:
+                # NPU模式：注册NPU资源
+                ray.init(ignore_reinit_error=True, resources={"NPU": self.num_gpus_total})
+            else:
+                # GPU模式：默认行为
+                ray.init(ignore_reinit_error=True)
 
 
 #############dp#############
@@ -92,10 +99,17 @@ class VLLMRunner(ABC):
             tensor_parallel_size=num_gpus_per_model,
             trust_remote_code=True,
         )
+        
+        if args[2] == 0:
+            return model.generate(args[0], args[1], **kwargs)
+        else:
+            # args[0]就是分块数据
+            response = []
+            for i in range(0, len(args[0]), args[2]):
+                response.extend(model.generate(args[0][i:i+args[2]],args[1], **kwargs))
+            return response
 
-        return model.generate(*args, **kwargs)
-
-    def run_batch(self, prompts: list[str]) -> list[list[str]]: 
+    def run_batch(self, prompts: list[str], save_callback=None) -> list[list[str]]: 
         outputs = [None for _ in prompts]
         remaining_prompts = []
         remaining_indices = []
@@ -105,9 +119,16 @@ class VLLMRunner(ABC):
 
 #############dp#############
         if self.use_ray:
-            get_answers_func = ray.remote(num_gpus=self.num_gpus_per_model)(
-                VLLMRunner.single_process_inference
-            ).remote
+            if self.use_npu:
+                # NPU模式：使用NPU资源
+                get_answers_func = ray.remote(resources={"NPU": self.num_gpus_per_model})(
+                    VLLMRunner.single_process_inference
+                ).remote
+            else:
+                # GPU模式：使用GPU资源
+                get_answers_func = ray.remote(num_gpus=self.num_gpus_per_model)(
+                    VLLMRunner.single_process_inference
+                ).remote
 
             num_processes = min(
                 len(remaining_prompts), max(1, self.num_gpus_total // self.num_gpus_per_model)
@@ -125,6 +146,7 @@ class VLLMRunner(ABC):
                         ports[idx],
                         remaining_prompts[i : i + chunk_size],
                         self.sampling_params,
+                        self.batch_size,
                     )
                 )
             
@@ -139,6 +161,8 @@ class VLLMRunner(ABC):
 
             for index, vllm_output in zip(remaining_indices, gathered_responses):
                 outputs[index] = [o.text for o in vllm_output.outputs]
+                if save_callback:
+                    save_callback(index, outputs[index])
             
             return outputs
 
@@ -153,4 +177,6 @@ class VLLMRunner(ABC):
                 vllm_outputs = llm.generate(remaining_prompts, self.sampling_params)
                 for index, vllm_output in zip(remaining_indices, vllm_outputs):
                     outputs[index] = [o.text for o in vllm_output.outputs] # 保存的是n次采样的结果，一共n个结果
+                    if save_callback:
+                        save_callback(index, outputs[index])
             return outputs
