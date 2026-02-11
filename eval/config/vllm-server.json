@@ -1,0 +1,39 @@
+{
+  "LiveCodeBench_vLLM_Server_NPU": {
+    "datasetType": "LiveCodeBenchDataset",
+    "datasets": [
+      {
+        "id": "livecodebench",
+        "dataset": "livecodebench",
+        "version": "v5",
+        "begin_date": "2024-10-01",
+        "end_date": "2025-02-01"
+      }
+    ],
+    "infer_parameters": [
+      {
+        "model_path": "Qwen/Qwen3-4B",
+        "output_dir": "res/examples/vllm_server_npu/livecodebench",
+        "endpoint": "http://127.0.0.1:18080/common_evaluate_batch",
+        "prompt_type": "chatml_qwen3",
+        "temperature": 0.6,
+        "top_p": 0.95,
+        "top_k": 20,
+        "min_p": 0.0,
+        "max_completion_tokens": 32768,
+        "n_sample": 1,
+        "stop_token": "<|im_end|>",
+        "num_gpus_total": 8,
+        "num_gpus_per_model": 1,
+        "reasoning_model": true,
+        "batch_size": 8,
+        "use_vllm_server": true,
+        "vllm_server_base_port": 8100,
+        "vllm_server_host": "0.0.0.0",
+        "vllm_server_dtype": "auto",
+        "vllm_server_wait_timeout": 900,
+        "mem_fraction": 0.9
+      }
+    ]
+  }
+}
