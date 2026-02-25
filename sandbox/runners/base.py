@@ -30,7 +30,7 @@ from sandbox.configs.run_config import RunConfig
 from sandbox.runners.isolation import tmp_cgroup, tmp_netns, tmp_overlayfs
 from sandbox.runners.types import CodeRunArgs, CodeRunResult, CommandRunResult, CommandRunStatus
 from sandbox.utils.common import set_permissions_recursively
-from sandbox.utils.execution import cleanup_process, ensure_bash_integrity, get_output_non_blocking, kill_process_tree
+from sandbox.utils.execution import cleanup_process, ensure_bash_integrity, get_output_non_blocking, kill_process_tree, try_decode
 
 logger = structlog.stdlib.get_logger()
 config = RunConfig.get_instance_sync()
@@ -71,25 +71,17 @@ async def run_command_bare(command: str | List[str],
                                                           **(extra_env or {})
                                                       },
                                                       preexec_fn=preexec_fn)
-        if stdin is not None:
-            try:
-                if p.stdin:
-                    p.stdin.write(stdin.encode())
-                    p.stdin.flush()
-                else:
-                    logger.warning("Attempted to write to stdin, but stdin is closed.")
-            except Exception as e:
-                logger.exception(f"Failed to write to stdin: {e}")
-        if p.stdin:
-            try:
-                p.stdin.close()
-            except Exception as e:
-                logger.warning(f"Failed to close stdin: {e}")
+        input_data = stdin.encode() if stdin is not None else None
         start_time = time.time()
         try:
-            await asyncio.wait_for(p.wait(), timeout=timeout)
+            stdout_b, stderr_b = await asyncio.wait_for(p.communicate(input_data), timeout=timeout)
             execution_time = time.time() - start_time
             logger.debug(f'stop running command {command}')
+            return CommandRunResult(status=CommandRunStatus.Finished,
+                                    execution_time=execution_time,
+                                    return_code=p.returncode,
+                                    stdout=try_decode(stdout_b),
+                                    stderr=try_decode(stderr_b))
         except asyncio.TimeoutError:
             return CommandRunResult(status=CommandRunStatus.TimeLimitExceeded,
                                     execution_time=time.time() - start_time,
@@ -103,12 +95,6 @@ async def run_command_bare(command: str | List[str],
                 cleanup_process()
             if config.sandbox.restore_bash:
                 ensure_bash_integrity()
-
-        return CommandRunResult(status=CommandRunStatus.Finished,
-                                execution_time=execution_time,
-                                return_code=p.returncode,
-                                stdout=await get_output_non_blocking(p.stdout),
-                                stderr=await get_output_non_blocking(p.stderr))
     except Exception as e:
         message = f'exception on running command {command}: {e} | {traceback.print_tb(e.__traceback__)}'
         logger.warning(message)
