@@ -29,7 +29,7 @@ class APIRunner(ABC):
             or getattr(args, 'max_completion_tokens', None)
         )
 
-        # 构建stop tokens列表
+        # Build the stop token list
         stop_attr = getattr(self.args, 'stop_token', None)
         if isinstance(stop_attr, str):
             self.stop_tokens = [token.strip() for token in stop_attr.split(',') if token.strip()]
@@ -81,7 +81,7 @@ class APIRunner(ABC):
     def _truncate(self, s: str, n: int = 2000):
         if not isinstance(s, str):
             return s
-        return s if len(s) <= n else s[:n] + f"...(剩余{len(s)-n}字节已截断)"
+        return s if len(s) <= n else s[:n] + f"...({len(s)-n} bytes truncated)"
 
     def _sanitize_payload(self, payload: dict):
         safe = dict(payload)
@@ -116,7 +116,7 @@ class APIRunner(ABC):
             meta["exception_repr"] = repr(exc)
             meta["traceback"] = traceback.format_exc()
 
-        print(f"API调用异常 - {title}:\n{json.dumps(meta, ensure_ascii=False, indent=2)}")
+        print(f"API call error - {title}:\n{json.dumps(meta, ensure_ascii=False, indent=2)}")
 
     def _extract_segment(self, prompt: str, start_token: str, end_token: Optional[str]) -> str:
         if not start_token:
@@ -132,7 +132,7 @@ class APIRunner(ABC):
         return prompt[start_idx:].strip()
 
     def _parse_prompt_to_messages(self, prompt: str) -> List[dict]:
-        """将包含角色标记的prompt解析为chat API的messages格式"""
+        """Parse a prompt with role markers into chat API message format."""
         prompt_type = getattr(self.args, 'prompt_type', None)
         if prompt_type:
             try:
@@ -171,7 +171,7 @@ class APIRunner(ABC):
         return []
 
     async def _call_api_once(self, prompt: str, session: aiohttp.ClientSession) -> List[str]:
-        """调用一次API获取响应"""
+        """Call the API once and return the response."""
         is_chat_api = "/chat/completions" in self.api_url
         
         if is_chat_api:
@@ -225,7 +225,7 @@ class APIRunner(ABC):
                             return [choice.get("text", "") for choice in result.get("choices", [])]
                     except json.JSONDecodeError as je:
                         self._log_error(
-                            "响应JSON解析失败",
+                            "Failed to parse response JSON",
                             url=response.url,
                             payload=payload,
                             status=response.status,
@@ -245,7 +245,7 @@ class APIRunner(ABC):
                         pass
 
                     self._log_error(
-                        "HTTP非200响应",
+                        "HTTP non-200 response",
                         url=response.url,
                         payload=payload,
                         status=response.status,
@@ -256,19 +256,19 @@ class APIRunner(ABC):
                     return []
 
         except asyncio.TimeoutError as e:
-            self._log_error("请求超时", url=self.api_url, payload=payload, exc=e)
+            self._log_error("Request timeout", url=self.api_url, payload=payload, exc=e)
             return []
 
         except aiohttp.ClientError as e:
-            self._log_error("aiohttp客户端错误", url=self.api_url, payload=payload, exc=e)
+            self._log_error("aiohttp client error", url=self.api_url, payload=payload, exc=e)
             return []
 
         except Exception as e:
-            self._log_error("未知异常", url=self.api_url, payload=payload, exc=e)
+            self._log_error("Unknown exception", url=self.api_url, payload=payload, exc=e)
             return []
 
     async def _run_batch_async(self, prompts: List[str], save_callback=None) -> List[List[str]]:
-        """批量异步采样，每个prompt采样n_sample次"""
+        """Run batch async sampling, n_sample times for each prompt."""
         timeout = aiohttp.ClientTimeout(total=getattr(self.args, 'timeout', 3600))
         max_concurrency = getattr(self.args, 'max_concurrency', 2)
         connector = aiohttp.TCPConnector(limit=max_concurrency)
@@ -291,7 +291,7 @@ class APIRunner(ABC):
                 ncols=120
             )
             
-            # 按索引排序并构建结果
+            # Sort by index and build the result list
             results = [None] * len(prompts)
             for idx, samples in batch_results:
                 results[idx] = samples
@@ -301,7 +301,7 @@ class APIRunner(ABC):
             return results
 
     def run_batch(self, prompts: List[str], save_callback=None) -> List[List[str]]:
-        """批量运行推理，返回格式与VLLMRunner一致"""
+        """Run batched inference with output format aligned to VLLMRunner."""
         def run_async_in_thread():
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)

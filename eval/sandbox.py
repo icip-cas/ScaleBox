@@ -45,13 +45,13 @@ def test_assert(url):
         print(json.dumps(result, indent=2))
         assert result['accepted'] == True
     except requests.exceptions.Timeout:
-        print(f"[Error] Sandbox endpoint {url} 响应超时（30秒）")
+        print(f"[Error] Sandbox endpoint {url} response timed out (30s)")
         raise
     except requests.exceptions.RequestException as e:
-        print(f"[Error] Sandbox endpoint {url} 请求失败: {repr(e)}")
+        print(f"[Error] Sandbox endpoint {url} request failed: {repr(e)}")
         raise
     except Exception as e:
-        print(f"[Error] Sandbox endpoint {url} 测试失败: {repr(e)}")
+        print(f"[Error] Sandbox endpoint {url} test failed: {repr(e)}")
         raise
 
 async def get_sandbox_result(dataset_type, data, completion, config, url, session):
@@ -106,7 +106,7 @@ async def _eval_one(raw_completion, info, args, data_i, config, session):
         else:
             completion = None
     else:
-        # 默认先取最后一个代码块，以防后面找不着带 "def" 的
+        # By default, take the last code block first in case no later block contains "def"
         completion = "\n".join(outputlines[indexlines[-2] : indexlines[-1] + 1])
         
         i = len(indexlines) - 1
@@ -115,12 +115,12 @@ async def _eval_one(raw_completion, info, args, data_i, config, session):
             end = indexlines[i]
             temp_completion = "\n".join(outputlines[start : end + 1])
             
-            # 检查是否包含 def
+            # Check whether it contains "def"
             if "def" in temp_completion:
                 completion = temp_completion
                 break
             
-            # 继续找前一个代码块
+            # Continue searching in the previous code block
             i -= 2
 
     if completion is not None:
@@ -151,7 +151,7 @@ async def evaluate_all_async(results, info, data, config, args):
                         return idx, sidx, res
                 tasks.append(asyncio.create_task(_task()))
 
-        for fut in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="Sandbox评测"):
+        for fut in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc="Sandbox evaluation"):
             idx, sidx, res = await fut
             results_sandbox[idx][sidx] = res
 
@@ -188,7 +188,7 @@ argparser.add_argument("--rpm", type=int, default=0, help="API requests per minu
 argparser.add_argument("--sample_only", action="store_true", default=False, help="Only sample without evaluation")
 argparser.add_argument("--sample_file", type=str, default=None, help="Load samples from file instead of sampling (no new sampling)")
 argparser.add_argument("--resume_from", type=str, default=None, help="Resume sampling from specified file, append new samples to output")
-# vLLM Server 模式相关参数
+# vLLM Server mode arguments
 argparser.add_argument("--use_vllm_server", action="store_true", default=False, help="Use vLLM server mode for multi-GPU deployment")
 argparser.add_argument("--vllm_server_base_port", type=int, default=8000, help="Base port for vLLM servers")
 argparser.add_argument("--vllm_server_host", type=str, default="0.0.0.0", help="Host for vLLM servers")
@@ -200,64 +200,64 @@ args = argparser.parse_args()
 with open(args.dataset_config, "r", encoding="utf-8") as file:
     dataset_config = json.load(file)
 
-# vLLM Server模式：启动服务器
+# vLLM Server mode: start servers
 vllm_server_manager = None
 vllm_server_endpoints = []
 
-# 定义信号处理函数，确保 Ctrl+C 时能正确清理
+# Define signal handler to ensure proper cleanup on Ctrl+C
 def signal_handler(signum, frame):
     print("\n" + "=" * 60, flush=True)
-    print("收到终止信号，正在清理资源...", flush=True)
+    print("Termination signal received, cleaning up resources...", flush=True)
     if vllm_server_manager is not None:
-        print("正在关闭 vLLM Server...", flush=True)
+        print("Shutting down vLLM Server...", flush=True)
         vllm_server_manager.stop_servers()
-        print("vLLM Server 已关闭", flush=True)
+        print("vLLM Server stopped", flush=True)
     print("=" * 60, flush=True)
     sys.exit(0)
 
-# 注册信号处理器
+# Register signal handlers
 signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
-signal.signal(signal.SIGTERM, signal_handler)  # kill 命令
+signal.signal(signal.SIGTERM, signal_handler)  # kill command
 
 if args.use_vllm_server:
     print("=" * 60)
-    print("启动 vLLM Server 模式")
+    print("Starting vLLM Server mode")
     print("=" * 60)
     
-    # 如果命令行没有指定model_path，从dataset_config中获取
+    # If model_path is not provided via CLI, read it from dataset_config
     model_path = args.model_path
     if not model_path:
-        # 从第一个dataset的第一个infer_parameters中获取model_path
+        # Read model_path from the first infer_parameters entry of the first dataset
         for dataset_name, info in dataset_config.items():
             if "infer_parameters" in info and len(info["infer_parameters"]) > 0:
                 model_path = info["infer_parameters"][0].get("model_path")
                 if model_path:
-                    print(f"从配置文件中获取 model_path: {model_path}")
+                    print(f"Loaded model_path from config: {model_path}")
                     break
     
     if not model_path:
-        raise ValueError("使用vLLM Server模式时必须指定 --model_path 或在dataset_config中配置model_path")
+        raise ValueError("In vLLM Server mode, you must provide --model_path or set model_path in dataset_config")
     
-    # 同样从配置文件中获取其他vLLM Server相关参数（如果命令行没有指定）
+    # Also read other vLLM Server parameters from config (if not specified via CLI)
     first_infer_params = None
     for dataset_name, info in dataset_config.items():
         if "infer_parameters" in info and len(info["infer_parameters"]) > 0:
             first_infer_params = info["infer_parameters"][0]
             break
     
-    # 获取参数，优先使用命令行参数，其次使用配置文件参数，最后使用默认值
+    # Resolve parameters: CLI args > config values > defaults
     num_gpus_total = args.num_gpus_total if args.num_gpus_total != 1 else (first_infer_params.get("num_gpus_total", 1) if first_infer_params else 1)
     num_gpus_per_model = args.num_gpus_per_model if args.num_gpus_per_model != 1 else (first_infer_params.get("num_gpus_per_model", 1) if first_infer_params else 1)
     max_completion_tokens = args.max_completion_tokens if args.max_completion_tokens != 8192 else (first_infer_params.get("max_completion_tokens", 8192) if first_infer_params else 8192)
     batch_size = args.batch_size if args.batch_size != 0 else (first_infer_params.get("batch_size", 16) if first_infer_params else 16)
     
-    # max_model_len: vLLM服务的最大上下文长度
-    # 优先级: 命令行参数 > 配置文件 > 默认值(None，让vLLM自动检测模型最大长度)
+    # max_model_len: maximum context length for the vLLM service
+    # Priority: CLI arg > config value > default (None, let vLLM auto-detect model max length)
     max_model_len = args.max_model_len
     if max_model_len is None and first_infer_params:
         max_model_len = first_infer_params.get("max_model_len", None)
     
-    # 更新args以便后续使用
+    # Update args for subsequent usage
     args.model_path = model_path
     args.num_gpus_total = num_gpus_total
     args.num_gpus_per_model = num_gpus_per_model
@@ -270,7 +270,7 @@ if args.use_vllm_server:
         num_gpus_per_model=num_gpus_per_model,
         base_port=args.vllm_server_base_port,
         host=args.vllm_server_host,
-        max_model_len=max_model_len,  # 使用独立的max_model_len参数，None则让vLLM自动检测
+        max_model_len=max_model_len,  # Use dedicated max_model_len; None lets vLLM auto-detect
         dtype=args.vllm_server_dtype,
         trust_remote_code=True,
         api_key=args.api_key,
@@ -280,18 +280,18 @@ if args.use_vllm_server:
         wait_timeout=args.vllm_server_wait_timeout,
     )
     
-    print(f"vLLM Server 配置:")
-    print(f"  max_model_len (服务端上下文长度): {max_model_len if max_model_len else '自动检测'}")
-    print(f"  max_completion_tokens (请求生成长度): {max_completion_tokens}")
+    print(f"vLLM Server configuration:")
+    print(f"  max_model_len (server context length): {max_model_len if max_model_len else 'auto-detect'}")
+    print(f"  max_completion_tokens (request generation length): {max_completion_tokens}")
     
     try:
         vllm_server_endpoints = vllm_server_manager.start_servers(wait_ready=True)
-        print(f"vLLM Server 启动成功，共 {len(vllm_server_endpoints)} 个实例")
+        print(f"vLLM Server started successfully with {len(vllm_server_endpoints)} instance(s)")
         for i, ep in enumerate(vllm_server_endpoints):
-            print(f"  实例 {i}: {ep}")
+            print(f"  Instance {i}: {ep}")
         print("=" * 60)
     except Exception as e:
-        print(f"vLLM Server 启动失败: {e}")
+        print(f"Failed to start vLLM Server: {e}")
         if vllm_server_manager:
             vllm_server_manager.stop_servers()
         raise
@@ -337,12 +337,12 @@ try:
                     args.stop_token = ','.join(data[0]['stop_tokens'])
                 print("###args.stop_token###", args.stop_token)
 
-                # 定义采样结果文件路径
+                # Define sampled output file path
                 sample_output_path = os.path.join(args.output_dir, dataset_idf + "_samples.jsonl")
                 
-                # 定义保存回调函数（每个prompt采样完成后调用）
+                # Define save callback (called after each prompt finishes sampling)
                 def save_sample_callback(idx, samples):
-                    """保存单个prompt的采样结果，格式: {"id": ..., "sample": [...]}"""
+                    """Save one prompt's sampled results, format: {"id": ..., "sample": [...]}."""
                     with open(sample_output_path, "a", encoding="utf-8") as f:
                         record = {
                             "id": data[idx]['id'],
@@ -350,45 +350,45 @@ try:
                         }
                         f.write(json.dumps(record, ensure_ascii=False) + "\n")
                 
-                # 判断是从文件加载还是进行采样
+                # Decide whether to load from file or run sampling
                 if args.sample_file:
-                    # 从文件加载采样结果，格式: {"id": ..., "sample": [...]}
-                    print(f"从文件加载采样结果: {args.sample_file}")
+                    # Load sampled results from file, format: {"id": ..., "sample": [...]}
+                    print(f"Loading sampled results from file: {args.sample_file}")
                     results_dict = {}
                     with open(args.sample_file, "r", encoding="utf-8") as f:
                         for line in f:
                             record = json.loads(line)
                             results_dict[record['id']] = record['sample']
                     
-                    # 根据data中的id顺序提取样本数据
+                    # Extract samples in the order of IDs in data
                     results = [results_dict.get(data_item['id'], []) for data_item in data]
                     
                 else:
-                    # 如果指定了从已有文件恢复
+                    # If resume-from is specified
                     if args.resume_from:
                         if not os.path.exists(args.resume_from):
-                            print(f"[Error] 指定的恢复文件不存在: {args.resume_from}")
+                            print(f"[Error] Resume file does not exist: {args.resume_from}")
                             exit(1)
                         
-                        print(f"[Resume] 从文件恢复: {args.resume_from}")
+                        print(f"[Resume] Resuming from file: {args.resume_from}")
                         
-                        # 加载已有的采样结果
+                        # Load existing sampled results
                         existing_dict = {}
                         with open(args.resume_from, "r", encoding="utf-8") as f:
                             for line in f:
                                 record = json.loads(line)
                                 existing_dict[record['id']] = record['sample']
                         
-                        # 构建初始结果
+                        # Build initial results
                         results = [existing_dict.get(data_item['id'], []) for data_item in data]
                         
-                        # 找出需要继续采样的prompt
+                        # Find prompts that still need sampling
                         pending_indices = [i for i, r in enumerate(results) if len(r) == 0]
                         
-                        print(f"[Resume] 已完成: {len(data) - len(pending_indices)}/{len(data)} prompts")
-                        print(f"[Resume] 待处理: {len(pending_indices)} prompts")
+                        print(f"[Resume] Completed: {len(data) - len(pending_indices)}/{len(data)} prompts")
+                        print(f"[Resume] Pending: {len(pending_indices)} prompts")
                         
-                        # 将已有数据复制到输出文件
+                        # Copy existing data into output file
                         with open(sample_output_path, "w", encoding="utf-8") as f:
                             for data_item in data:
                                 if data_item['id'] in existing_dict:
@@ -399,14 +399,14 @@ try:
                                     f.write(json.dumps(record, ensure_ascii=False) + "\n")
                         
                         if len(pending_indices) == 0:
-                            print(f"[Resume] 所有prompt已完成，无需继续采样")
+                            print(f"[Resume] All prompts are already completed, no further sampling needed")
                         else:
-                            # 只对未完成的prompt进行采样
+                            # Sample only unfinished prompts
                             pending_prompts = [prompts[i] for i in pending_indices]
                             
-                            # 创建针对pending索引的回调函数
+                            # Create callback for pending indices
                             def save_pending_callback(local_idx, samples):
-                                """保存pending prompt的采样结果"""
+                                """Save sampled results for a pending prompt."""
                                 global_idx = pending_indices[local_idx]
                                 with open(sample_output_path, "a", encoding="utf-8") as f:
                                     record = {
@@ -430,15 +430,15 @@ try:
                                 runner = VLLMRunner(args, args.model_path)
                                 pending_results = runner.run_batch(pending_prompts, save_callback=save_pending_callback)
                             
-                            # 合并结果
+                            # Merge results
                             for i, idx in enumerate(pending_indices):
                                 results[idx] = pending_results[i]
                     else:
-                        # 清空之前的采样文件（如果存在）
+                        # Clear previous sample file (if it exists)
                         if os.path.exists(sample_output_path):
                             os.remove(sample_output_path)
                         
-                        # 根据参数选择使用API还是VLLM
+                        # Select API or VLLM based on arguments
                         if args.use_vllm_server:
                             runner = MultiAPIRunner(
                                 args=args,
@@ -454,17 +454,17 @@ try:
                             runner = VLLMRunner(args, args.model_path)
                             results = runner.run_batch(prompts, save_callback=save_sample_callback)
                 
-                # 如果只采样，跳过评测
+                # If sample-only mode is enabled, skip evaluation
                 if args.sample_only:
-                    print(f"采样完成，结果已保存到: {sample_output_path}")
+                    print(f"Sampling completed, results saved to: {sample_output_path}")
                     continue
                 
-                # 进行sandbox评测
+                # Run sandbox evaluation
                 start = time.perf_counter()
                 results_sandbox, accepted_sandbox = asyncio.run(evaluate_all_async(results, info, data, config, args))
                 elapsed_s = time.perf_counter() - start
                 elapsed_min = elapsed_s / 60
-                print(f"sandbox耗时:{elapsed_min:.2f} 分钟")
+                print(f"Sandbox elapsed time: {elapsed_min:.2f} minutes")
                 res_output_path = os.path.join(args.output_dir, dataset_idf + ".jsonl")
                 with open(res_output_path, "w", encoding="utf-8") as f:
                     for res in results_sandbox:
@@ -495,10 +495,10 @@ try:
                 print("--------------------------------")
 
 finally:
-    # 确保vLLM server被正确关闭
+    # Ensure vLLM server is properly closed
     if vllm_server_manager is not None:
         print("=" * 60)
-        print("正在关闭 vLLM Server...")
+        print("Shutting down vLLM Server...")
         vllm_server_manager.stop_servers()
-        print("vLLM Server 已关闭")
+        print("vLLM Server stopped")
         print("=" * 60)
