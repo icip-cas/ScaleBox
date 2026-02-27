@@ -168,40 +168,40 @@ def load_multiple_dataset(dataset):
 
 def convert_test_format(test_code: str, entry_point: str, use_set: bool = False) -> str:
     """
-    将原始测试代码格式转换为目标格式
+    Convert raw test code format to the target format.
     
-    原始格式:
+    Raw format:
         inputs = [[(arg1), (arg2)], ...]
         results = [(result1), (result2), ...]
         for i, (inp, exp) in enumerate(zip(inputs, results)):
             assertion(func_name(*inp), exp, 0)
     
-    目标格式:
+    Target format:
         def check(func_name):
             assert set(func_name(arg1, arg2)) == set(result1)  # use_set=True
             assert func_name(arg1, arg2) == result1            # use_set=False
             ...
         check(func_name)
     
-    参数:
-        test_code: 原始测试代码
-        entry_point: 函数名
-        use_set: 是否使用 set() 包装，通过 sample['test_list'][0] 中是否有 'set' 判断
+    Args:
+        test_code: Raw test code
+        entry_point: Function name
+        use_set: Whether to wrap with set(); determined by whether sample['test_list'][0] contains 'set'
     """
     try:
-        # 提取 inputs
+        # Extract inputs
         inputs_match = re.search(r'inputs\s*=\s*(\[.*?\])\s*\nresults', test_code, re.DOTALL)
         if not inputs_match:
-            return test_code  # 如果格式不匹配，返回原始代码
+            return test_code  # Return original code if format does not match
         inputs_str = inputs_match.group(1)
         
-        # 提取 results
+        # Extract results
         results_match = re.search(r'results\s*=\s*(\[.*?\])\s*\n(?:for|$)', test_code, re.DOTALL)
         if not results_match:
             return test_code
         results_str = results_match.group(1)
 
-        # 使用安全的 eval 环境解析列表（支持 inf, nan, set 等）
+        # Parse lists using a safe eval environment (supports inf, nan, set, etc.)
         safe_globals = {
             "inf": float("inf"),
             "nan": float("nan"),
@@ -217,7 +217,7 @@ def convert_test_format(test_code: str, entry_point: str, use_set: bool = False)
         inputs = eval(inputs_str, {"__builtins__": {}}, safe_globals)
         results = eval(results_str, {"__builtins__": {}}, safe_globals)
         
-        # 生成新格式
+        # Generate the new format
         lines = [f"def check({entry_point}):"]
         for inp, exp in zip(inputs, results):
             args_str = ", ".join(repr(arg) for arg in inp)
@@ -233,7 +233,7 @@ def convert_test_format(test_code: str, entry_point: str, use_set: bool = False)
     
     except Exception as e:
         print(f"Warning: Failed to convert test format: {e}")
-        return test_code  # 转换失败时返回原始代码
+        return test_code  # Return original code when conversion fails
 
 
 def load_mbpp_dataset(dataset):
@@ -252,7 +252,7 @@ def load_mbpp_dataset(dataset):
     
     data = []
     for id, sample in enumerate(raw_data):
-        # 提取 entry_point
+        # Extract entry_point
         if "math.isclose" in sample['test_list'][0]:
             entry_point = re.search(r"math\.isclose\((\w+)\(", sample['test_list'][0]).group(1)
         elif "text_match_three" in sample['test_list'][0]:
@@ -276,16 +276,16 @@ def load_mbpp_dataset(dataset):
         else:
             entry_point = re.search(r'assert\s+([A-Za-z_]\w*)\s*\(', sample['test_list'][0]).group(1)
         
-        # 构建 test
+        # Build test
         test = "def check(" + entry_point + "):\n    "
         test += "\n    ".join(sample['test_list'])
         
-        # mbppplus 格式转换
+        # Convert mbppplus format
         if dataset['id'] == 'mbppplus':
             use_set = 'set(' in sample['test_list'][0]
             test = convert_test_format(sample['test'], entry_point, use_set)
         
-        # 提取 prefix_template
+        # Extract prefix_template
         lines = sample['code'].split('\n')
         for i, line in enumerate(lines):
             if entry_point in line:
@@ -328,7 +328,7 @@ def load_humaneval_dataset(dataset):
     return data
 
 def load_aethercode_dataset(dataset):
-    # 由于aethercode数据是parquet类型，直接使用load_dataset会遇到parquet的bug，所以使用polars.read_parquet来加载数据
+    # AetherCode data is parquet; load_dataset may hit parquet issues, so use polars.read_parquet instead
     version = dataset['version'].strip('"').split(',')
     raw_data = []
     for v in version:
@@ -336,11 +336,11 @@ def load_aethercode_dataset(dataset):
         for i in df.iter_rows(named=True):
             raw_data.append({'id':i['id'],'prompt':i['description'],'test_cases':i['test_cases']})
     
-    # # 从 jsonl 文件读取数据
+    # # Read data from a jsonl file
     # import json
     # raw_data = []
     
-    # # 读取需要保留的 ID 列表
+    # # Read the list of IDs to keep
     # zero_true_ids_path = "/141nfs/wangpengbo/sandbox/sandbox_eval/res/aethercode_deepseek_reasoner/zero_true_ids.txt"
     # with open(zero_true_ids_path, "r") as f:
     #     target_ids = set(line.strip() for line in f if line.strip())
@@ -349,7 +349,7 @@ def load_aethercode_dataset(dataset):
     # with open(jsonl_path, "r") as f:
     #     for line in f:
     #         item = json.loads(line)
-    #         # # 只保留 ID 在 zero_true_ids.txt 中的数据
+    #         # # Keep only records whose ID is in zero_true_ids.txt
     #         # if str(item['id']) in target_ids:
     #         raw_data.append({'id': item['id'], 'prompt': item['description'], 'test_cases': item['test_cases']})
     
@@ -407,7 +407,7 @@ def load_aethercode_dataset(dataset):
     print("###len(data)###",len(data))
     return data
 
-# 不同数据集的模板
+# Templates for different datasets
 def get_lcb_prompt(
     question, prompt_type, think
 ) -> str:
@@ -471,7 +471,8 @@ def get_lcb_cpp_prompt(
 
     return full_prompt
 
-# mbpp模板有问题 应该告诉模型程序以什么函数名开头（这里通过用例子告诉模型函数名） 此外还要告诉模型不要写注释
+# The MBPP template has issues: it should tell the model which function name to start with
+# (here it is hinted via examples), and also ask the model not to write comments.
 def get_mbpp_prompt(
     instance, prompt_type, think
 ) -> str:
@@ -545,7 +546,7 @@ def get_multiple_prompt(
         full_prompt += '<think>\n'
     return full_prompt
 
-# 模板好像有问题，模型总是输出python代码而不是cpp代码
+# The template seems problematic: the model often outputs Python instead of C++.
 def get_aethercode_prompt(
     instance, prompt_type, think
 ) -> str:
@@ -574,7 +575,7 @@ def get_aethercode_prompt(
     return full_prompt
 
 def get_template_data(dataset, dataset_type, prompt_type, reasoning_model):
-    # 获取数据
+    # Load data
     if dataset_type == "LiveCodeBenchDataset":
         data = load_lcb_dataset(dataset)
     elif dataset_type == "LiveCodeBenchDataset-cpp":
@@ -588,7 +589,7 @@ def get_template_data(dataset, dataset_type, prompt_type, reasoning_model):
     elif dataset_type == "AetherCodeDataset":
         data = load_aethercode_dataset(dataset)
     
-    # 给数据套模板
+    # Apply prompt templates to data
     prompts = []
     for instance in data:
         if dataset_type == "LiveCodeBenchDataset":

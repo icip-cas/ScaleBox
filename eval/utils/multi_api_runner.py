@@ -1,11 +1,11 @@
 """
-MultiAPIRunner - 支持多个API端口的动态负载均衡采样
+MultiAPIRunner - dynamic load-balanced sampling with multiple API endpoints
 
-功能：
-1. 将每个prompt重复n_sample次，作为独立任务
-2. 多个端口共享一个任务队列
-3. 每个端口有最大并发限制
-4. 任务完成后立即从队列取下一个（动态调度）
+Features:
+1. Repeat each prompt n_sample times as independent tasks
+2. Multiple endpoints share one task queue
+3. Each endpoint has a max concurrency limit
+4. Fetch the next task immediately after one completes (dynamic scheduling)
 """
 
 import asyncio
@@ -28,19 +28,19 @@ except Exception:
 
 class MultiAPIRunner(ABC):
     """
-    支持多个API endpoint的动态负载均衡采样Runner
+    Dynamic load-balanced sampling runner for multiple API endpoints.
     
-    工作流程：
-    1. 将prompts展开：每个prompt重复n_sample次，带有(orig_idx, sample_idx)标记
-    2. 所有展开的任务放入共享队列
-    3. 每个端口是一个worker，有并发限制(batch_size)
-    4. worker不断从队列取任务，完成一个立即取下一个
-    5. 结果按(orig_idx, sample_idx)聚合
+    Workflow:
+    1. Expand prompts: each prompt is repeated n_sample times with (orig_idx, sample_idx)
+    2. Put all expanded tasks into a shared queue
+    3. Each endpoint runs a worker with concurrency limit (batch_size)
+    4. Workers continuously pull tasks; each finished task immediately pulls the next
+    5. Aggregate results by (orig_idx, sample_idx)
     
-    使用示例:
+    Example:
     ```python
     runner = MultiAPIRunner(
-        args=args,  # args.batch_size控制每个server的最大并发
+        args=args,  # args.batch_size controls max concurrency per server
         model=model_name,
         api_endpoints=["http://localhost:8000/v1", "http://localhost:8001/v1"],
     )
@@ -56,29 +56,29 @@ class MultiAPIRunner(ABC):
         model: str,
         api_endpoints: List[str],
         api_key: str = "EMPTY",
-        debug: bool = True,  # 是否开启调试日志
+        debug: bool = True,  # Whether to enable debug logs
     ):
         """
-        初始化MultiAPIRunner
+        Initialize MultiAPIRunner.
         
         Args:
-            args: 包含采样参数的对象（n_sample, temperature, top_p, batch_size等）
-            model: 模型名称（用于API调用）
-            api_endpoints: API endpoint列表（如 ["http://localhost:8000/v1", ...]）
-            api_key: API密钥
-            debug: 是否开启调试日志
+            args: Object with sampling params (n_sample, temperature, top_p, batch_size, etc.)
+            model: Model name (used for API calls)
+            api_endpoints: API endpoint list (e.g. ["http://localhost:8000/v1", ...])
+            api_key: API key
+            debug: Whether to enable debug logs
         """
         self.args = args
         self.model = model
         self.api_endpoints = api_endpoints
         self.api_key = api_key
-        self.batch_size = getattr(args, 'batch_size', 16) or 16  # 使用batch_size作为每个server的最大并发数
+        self.batch_size = getattr(args, 'batch_size', 16) or 16  # Use batch_size as max concurrency per server
         self.timeout = getattr(args, 'timeout', 60000)
-        self.debug = debug  # 调试开关
+        self.debug = debug  # Debug switch
         
-        # 模型名称
+        # Model name
         self.model_name = getattr(args, 'model_name', model) or model
-        # 预留: 计算输入token数用（可选）
+        # Reserved: used for counting input tokens (optional)
         self._tokenizer = None
         self._max_context_len = (
             getattr(args, 'max_model_len', None)
@@ -86,7 +86,7 @@ class MultiAPIRunner(ABC):
             or getattr(args, 'max_completion_tokens', None)
         )
         
-        # 构建stop tokens列表
+        # Build stop token list
         stop_attr = getattr(self.args, 'stop_token', None)
         if isinstance(stop_attr, str):
             self.stop_tokens = [token.strip() for token in stop_attr.split(',') if token.strip()]
@@ -95,13 +95,13 @@ class MultiAPIRunner(ABC):
         else:
             self.stop_tokens = []
         
-        # create client pool (与图片中的逻辑一致)
-        # 使用 AsyncOpenAI 异步客户端
+        # Create client pool (aligned with the reference logic)
+        # Use AsyncOpenAI async clients
         self.client_pool = []
-        self.api_bases = []  # 保存处理后的base_url用于日志
+        self.api_bases = []  # Keep normalized base_url values for logging
         api_bases = api_endpoints if isinstance(api_endpoints, list) else [api_endpoints]
         for base_url in api_bases:
-            # 确保base_url格式正确
+            # Ensure base_url format is correct
             if not base_url.endswith('/v1'):
                 if base_url.endswith('/'):
                     base_url = base_url + 'v1'
@@ -115,12 +115,12 @@ class MultiAPIRunner(ABC):
                 timeout=self.timeout
             ))
         
-        print(f"[MultiAPIRunner] ========== 初始化完成 ==========")
-        print(f"[MultiAPIRunner] 创建了 {len(self.client_pool)} 个 AsyncOpenAI client:")
+        print(f"[MultiAPIRunner] ========== Initialization complete ==========")
+        print(f"[MultiAPIRunner] Created {len(self.client_pool)} AsyncOpenAI clients:")
         for i, ep in enumerate(self.api_bases):
-            print(f"  [Client {i}] {ep} (最大并发: {self.batch_size})")
-        print(f"[MultiAPIRunner] 调试模式: {'开启' if self.debug else '关闭'}")
-        print(f"[MultiAPIRunner] 采样策略: 异步动态负载均衡")
+            print(f"  [Client {i}] {ep} (max concurrency: {self.batch_size})")
+        print(f"[MultiAPIRunner] Debug mode: {'ON' if self.debug else 'OFF'}")
+        print(f"[MultiAPIRunner] Sampling strategy: asynchronous dynamic load balancing")
         print(f"[MultiAPIRunner] ================================")
     
     def _get_tokenizer(self):
@@ -132,7 +132,7 @@ class MultiAPIRunner(ABC):
         try:
             self._tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
         except Exception as e:
-            self._debug_log(f"[MultiAPIRunner] 无法加载tokenizer: {e}")
+            self._debug_log(f"[MultiAPIRunner] Failed to load tokenizer: {e}")
             self._tokenizer = None
         return self._tokenizer
 
@@ -161,13 +161,13 @@ class MultiAPIRunner(ABC):
             available = 1
         if available < max_tokens:
             self._debug_log(
-                f"[MultiAPIRunner] 动态max_tokens: {max_tokens} -> {available} "
+                f"[MultiAPIRunner] Dynamic max_tokens: {max_tokens} -> {available} "
                 f"(input={input_tokens}, context={self._max_context_len})"
             )
         return min(max_tokens, available)
 
     def _debug_log(self, message: str):
-        """调试日志，带时间戳"""
+        """Debug log with timestamp."""
         if self.debug:
             timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]
             print(f"[{timestamp}] {message}")
@@ -175,7 +175,7 @@ class MultiAPIRunner(ABC):
     def _truncate(self, s: str, n: int = 2000) -> str:
         if not isinstance(s, str):
             return s
-        return s if len(s) <= n else s[:n] + f"...(剩余{len(s)-n}字节已截断)"
+        return s if len(s) <= n else s[:n] + f"...({len(s)-n} bytes truncated)"
 
     def _sanitize_payload(self, payload: dict) -> dict:
         safe = dict(payload)
@@ -210,7 +210,7 @@ class MultiAPIRunner(ABC):
             meta["exception_repr"] = repr(exc)
             meta["traceback"] = traceback.format_exc()
 
-        print(f"[MultiAPIRunner] API调用异常 - {title}:\n{json.dumps(meta, ensure_ascii=False, indent=2)}")
+        print(f"[MultiAPIRunner] API call error - {title}:\n{json.dumps(meta, ensure_ascii=False, indent=2)}")
 
     async def get_openai_response(
         self,
@@ -224,28 +224,28 @@ class MultiAPIRunner(ABC):
         stream: bool = False,
     ) -> str:
         """
-        使用AsyncOpenAI client异步调用API (与图片中的逻辑一致)
+        Call the API asynchronously with an AsyncOpenAI client (aligned with the reference logic).
         
         Args:
-            client: AsyncOpenAI客户端实例
-            model: 模型名称
-            user_prompt: 用户输入
-            max_tokens: 最大token数
-            temperature: 温度参数
-            top_p: top_p参数
-            n: 生成数量
-            stream: 是否流式输出
+            client: AsyncOpenAI client instance
+            model: Model name
+            user_prompt: User input
+            max_tokens: Max token count
+            temperature: Temperature
+            top_p: Top-p
+            n: Number of generations
+            stream: Whether to stream output
             
         Returns:
-            生成的文本内容
+            Generated text content
         """
         try:
             prompt_text = user_prompt if user_prompt is not None else ""
             
-            # 根据输入长度动态调整max_tokens，避免超出上下文
+            # Dynamically adjust max_tokens by input length to avoid context overflow
             max_tokens = self._adjust_max_tokens(prompt_text, max_tokens)
 
-            # 构建请求参数（标准OpenAI参数）
+            # Build request params (standard OpenAI fields)
             kwargs = {
                 "model": model,
                 "prompt": prompt_text,
@@ -254,15 +254,15 @@ class MultiAPIRunner(ABC):
                 "stream": stream,
             }
             
-            # 添加自定义参数
+            # Add custom params
             kwargs["temperature"] = temperature
             kwargs["top_p"] = top_p
             
-            # 添加stop tokens
+            # Add stop tokens
             if self.stop_tokens:
                 kwargs["stop"] = self.stop_tokens
             
-            # 非标准OpenAI参数通过 extra_body 传递（如 top_k, min_p 等 vLLM 支持的参数）
+            # Pass non-standard OpenAI params through extra_body (e.g. top_k, min_p supported by vLLM)
             extra_body = {}
             if hasattr(self.args, 'top_k') and self.args.top_k > 0:
                 extra_body["top_k"] = self.args.top_k
@@ -273,16 +273,16 @@ class MultiAPIRunner(ABC):
             if extra_body:
                 kwargs["extra_body"] = extra_body
             
-            # 异步调用API
+            # Call API asynchronously
             response = await client.completions.create(**kwargs)
             
-            # 提取响应内容
+            # Extract response text
             if response.choices:
                 return response.choices[0].text or ""
             return ""
             
         except Exception as e:
-            self._log_error("AsyncOpenAI API调用失败", exc=e)
+            self._log_error("AsyncOpenAI API call failed", exc=e)
             return ""
 
     async def _call_api_single(
@@ -291,13 +291,13 @@ class MultiAPIRunner(ABC):
         client: openai.AsyncOpenAI,
     ) -> str:
         """
-        异步调用API一次，使用指定的client
-        (与图片中的逻辑一致，但由endpoint_worker指定client)
+        Call the API once asynchronously with the specified client.
+        (Aligned with the reference logic, but the client is chosen by endpoint_worker.)
         
         Returns:
-            生成的文本，如果失败返回空字符串
+            Generated text, or empty string on failure
         """
-        # 调用 get_openai_response (与图片中的逻辑一致)
+        # Call get_openai_response (aligned with the reference logic)
         res = await self.get_openai_response(
             client=client,
             model=self.model_name,
@@ -317,123 +317,123 @@ class MultiAPIRunner(ABC):
         save_callback: Optional[Callable] = None
     ) -> List[List[str]]:
         """
-        批量异步采样，使用动态负载均衡
+        Batched async sampling with dynamic load balancing.
         
-        工作流程：
-        1. 将每个prompt重复n_sample次，创建(orig_idx, sample_idx, prompt)任务
-        2. 所有任务放入共享队列
-        3. 每个端口worker从队列取任务，完成后立即取下一个
-        4. 结果按原始索引聚合
+        Workflow:
+        1. Repeat each prompt n_sample times and create (orig_idx, sample_idx, prompt) tasks
+        2. Put all tasks into a shared queue
+        3. Each endpoint worker pulls tasks and immediately fetches the next after completion
+        4. Aggregate results by original prompt index
         """
         n_sample = self.args.n_sample
         num_prompts = len(prompts)
         total_tasks = num_prompts * n_sample
         
-        print(f"\n[MultiAPIRunner] ========== 开始批量采样 ==========")
-        print(f"[MultiAPIRunner] Prompts 数量: {num_prompts}")
-        print(f"[MultiAPIRunner] 每个 Prompt 采样次数: {n_sample}")
-        print(f"[MultiAPIRunner] 总任务数: {total_tasks}")
-        print(f"[MultiAPIRunner] Client 数量: {len(self.client_pool)}")
-        print(f"[MultiAPIRunner] 每个 Client 最大并发: {self.batch_size}")
-        print(f"[MultiAPIRunner] 理论最大并发: {len(self.client_pool) * self.batch_size}")
+        print(f"\n[MultiAPIRunner] ========== Start batch sampling ==========")
+        print(f"[MultiAPIRunner] Prompt count: {num_prompts}")
+        print(f"[MultiAPIRunner] Samples per prompt: {n_sample}")
+        print(f"[MultiAPIRunner] Total tasks: {total_tasks}")
+        print(f"[MultiAPIRunner] Client count: {len(self.client_pool)}")
+        print(f"[MultiAPIRunner] Max concurrency per client: {self.batch_size}")
+        print(f"[MultiAPIRunner] Theoretical max concurrency: {len(self.client_pool) * self.batch_size}")
         print(f"[MultiAPIRunner] =====================================\n")
         
-        # 1. 展开prompts：每个prompt重复n_sample次
-        # 格式: (orig_idx, sample_idx, prompt)
+        # 1. Expand prompts: repeat each prompt n_sample times
+        # Format: (orig_idx, sample_idx, prompt)
         task_list = []
         for orig_idx, prompt in enumerate(prompts):
             for sample_idx in range(n_sample):
                 task_list.append((orig_idx, sample_idx, prompt))
 
-        # 打乱任务顺序，让难易任务均匀分布
+        # Shuffle task order to distribute easy/hard tasks more evenly
         random.shuffle(task_list)
-        self._debug_log(f"[队列] 已创建并打乱 {len(task_list)} 个任务")
+        self._debug_log(f"[Queue] Created and shuffled {len(task_list)} tasks")
 
         task_queue = asyncio.Queue()
         for task in task_list:
             await task_queue.put(task)
         
-        self._debug_log(f"[队列] 所有任务已放入队列，队列大小: {task_queue.qsize()}")
+        self._debug_log(f"[Queue] All tasks enqueued, queue size: {task_queue.qsize()}")
         
-        # 2. 结果存储: results[orig_idx][sample_idx] = sample_text
+        # 2. Result storage: results[orig_idx][sample_idx] = sample_text
         results: Dict[int, Dict[int, str]] = {i: {} for i in range(num_prompts)}
         results_lock = asyncio.Lock()
         
-        # 3. 进度条
+        # 3. Progress bar
         pbar = tqdm(total=total_tasks, desc="Sampling", ncols=120)
         pbar_lock = asyncio.Lock()
         
-        # 4. 端口统计
+        # 4. Endpoint stats
         endpoint_stats = {i: {"completed": 0, "active": 0, "failed": 0} for i in range(len(self.client_pool))}
         stats_lock = asyncio.Lock()
         
-        # 5. 全局计数器
-        completed_count = [0]  # 使用列表以便在闭包中修改
+        # 5. Global counter
+        completed_count = [0]  # Use a list so it can be modified inside closures
         completed_lock = asyncio.Lock()
         
-        # 6. 定义单个端口的worker（每个端口使用专属的client）
+        # 6. Define endpoint worker (each endpoint uses a dedicated client)
         async def endpoint_worker(endpoint_idx: int, client: openai.AsyncOpenAI):
             """
-            单个端口的worker协程
-            - 维护最多batch_size个并发任务
-            - 任务完成后立即从队列取下一个
-            - 使用专属的AsyncOpenAI client
+            Worker coroutine for a single endpoint.
+            - Keeps up to batch_size concurrent tasks
+            - Pulls a new task immediately after one finishes
+            - Uses a dedicated AsyncOpenAI client
             """
             active_tasks: set = set()
             max_concurrent = self.batch_size
             
-            self._debug_log(f"[Worker {endpoint_idx}] 启动，endpoint: {self.api_bases[endpoint_idx]}")
+            self._debug_log(f"[Worker {endpoint_idx}] Started, endpoint: {self.api_bases[endpoint_idx]}")
             
             async def process_single_task(orig_idx: int, sample_idx: int, prompt: str):
-                """处理单个采样任务"""
+                """Process a single sampling task."""
                 task_id = f"prompt_{orig_idx}_sample_{sample_idx}"
                 
-                # 更新统计
+                # Update stats
                 async with stats_lock:
                     endpoint_stats[endpoint_idx]["active"] += 1
                     current_active = endpoint_stats[endpoint_idx]["active"]
                 
-                # 获取当前队列剩余数量
+                # Get current remaining queue size
                 queue_remaining = task_queue.qsize()
                 
                 self._debug_log(
-                    f"[Worker {endpoint_idx}] ▶ 开始任务 {task_id} | "
-                    f"当前活跃: {current_active}/{max_concurrent} | "
-                    f"队列剩余: {queue_remaining}"
+                    f"[Worker {endpoint_idx}] ▶ Start task {task_id} | "
+                    f"active: {current_active}/{max_concurrent} | "
+                    f"queue remaining: {queue_remaining}"
                 )
                 
                 try:
-                    # 使用该worker专属的client调用API
+                    # Call API with this worker's dedicated client
                     sample = await self._call_api_single(prompt, client)
                     
-                    # 存储结果
+                    # Store result
                     async with results_lock:
                         results[orig_idx][sample_idx] = sample
                     
-                    # 更新进度条
+                    # Update progress bar
                     async with pbar_lock:
                         pbar.update(1)
                     
-                    # 更新全局完成计数
+                    # Update global completion counter
                     async with completed_lock:
                         completed_count[0] += 1
                         current_completed = completed_count[0]
                     
-                    # 更新统计
+                    # Update stats
                     async with stats_lock:
                         endpoint_stats[endpoint_idx]["completed"] += 1
                         endpoint_stats[endpoint_idx]["active"] -= 1
                         worker_completed = endpoint_stats[endpoint_idx]["completed"]
                     
-                    # 截断sample用于显示
+                    # Truncate sample for display
                     sample_preview = sample[:50] + "..." if len(sample) > 50 else sample
                     sample_preview = sample_preview.replace('\n', '\\n')
                     
                     self._debug_log(
-                        f"[Worker {endpoint_idx}] ✓ 完成任务 {task_id} | "
-                        f"总进度: {current_completed}/{total_tasks} | "
-                        f"本Worker完成: {worker_completed} | "
-                        f"响应预览: {sample_preview}"
+                        f"[Worker {endpoint_idx}] ✓ Completed task {task_id} | "
+                        f"overall progress: {current_completed}/{total_tasks} | "
+                        f"worker completed: {worker_completed} | "
+                        f"response preview: {sample_preview}"
                     )
                         
                 except Exception as e:
@@ -442,12 +442,12 @@ class MultiAPIRunner(ABC):
                         endpoint_stats[endpoint_idx]["failed"] += 1
                     
                     self._debug_log(
-                        f"[Worker {endpoint_idx}] ✗ 任务失败 {task_id} | "
-                        f"错误: {str(e)[:100]}"
+                        f"[Worker {endpoint_idx}] ✗ Task failed {task_id} | "
+                        f"error: {str(e)[:100]}"
                     )
             
             while True:
-                # 尝试填满并发槽
+                # Try to fill available concurrency slots
                 slots_available = max_concurrent - len(active_tasks)
                 
                 tasks_fetched = 0
@@ -464,38 +464,38 @@ class MultiAPIRunner(ABC):
                 
                 if tasks_fetched > 0:
                     self._debug_log(
-                        f"[Worker {endpoint_idx}] 从队列取出 {tasks_fetched} 个任务 | "
-                        f"当前活跃任务数: {len(active_tasks)}"
+                        f"[Worker {endpoint_idx}] Fetched {tasks_fetched} tasks from queue | "
+                        f"current active tasks: {len(active_tasks)}"
                     )
                 
                 if not active_tasks:
-                    # 队列空且没有活动任务，worker退出
-                    self._debug_log(f"[Worker {endpoint_idx}] 队列已空，Worker 退出")
+                    # Queue empty and no active tasks, worker exits
+                    self._debug_log(f"[Worker {endpoint_idx}] Queue empty, worker exits")
                     break
                 
-                # 等待任意一个任务完成
+                # Wait until any active task completes
                 done, active_tasks = await asyncio.wait(
                     active_tasks, 
                     return_when=asyncio.FIRST_COMPLETED
                 )
-                # done中的任务已完成，active_tasks更新为pending任务
+                # Tasks in done are finished; active_tasks now contains pending tasks
         
-        # 7. 创建所有端口的worker，每个worker使用对应的client
-        print(f"[MultiAPIRunner] 启动 {len(self.client_pool)} 个 Worker...")
+        # 7. Create workers for all endpoints, each with its corresponding client
+        print(f"[MultiAPIRunner] Starting {len(self.client_pool)} workers...")
         workers = [
             endpoint_worker(i, client) 
             for i, client in enumerate(self.client_pool)
         ]
         
-        # 并行运行所有worker
+        # Run all workers in parallel
         await asyncio.gather(*workers)
         
         pbar.close()
         
-        # 8. 打印统计信息
-        print(f"\n[MultiAPIRunner] ========== 采样完成统计 ==========")
-        print(f"[MultiAPIRunner] 总任务数: {total_tasks}")
-        print(f"[MultiAPIRunner] 各 Client 统计:")
+        # 8. Print summary stats
+        print(f"\n[MultiAPIRunner] ========== Sampling summary ==========")
+        print(f"[MultiAPIRunner] Total tasks: {total_tasks}")
+        print(f"[MultiAPIRunner] Per-client stats:")
         total_completed = 0
         total_failed = 0
         for i in range(len(self.client_pool)):
@@ -505,11 +505,11 @@ class MultiAPIRunner(ABC):
             total_failed += failed
             percentage = (completed / total_tasks * 100) if total_tasks > 0 else 0
             print(f"  [Client {i}] {self.api_bases[i]}")
-            print(f"           完成: {completed} ({percentage:.1f}%) | 失败: {failed}")
-        print(f"[MultiAPIRunner] 总完成: {total_completed} | 总失败: {total_failed}")
+            print(f"           completed: {completed} ({percentage:.1f}%) | failed: {failed}")
+        print(f"[MultiAPIRunner] Total completed: {total_completed} | total failed: {total_failed}")
         print(f"[MultiAPIRunner] =====================================\n")
         
-        # 9. 转换结果格式: Dict[int, Dict[int, str]] -> List[List[str]]
+        # 9. Convert result format: Dict[int, Dict[int, str]] -> List[List[str]]
         final_results: List[List[str]] = []
         for orig_idx in range(num_prompts):
             samples = []
@@ -518,7 +518,7 @@ class MultiAPIRunner(ABC):
                 samples.append(sample)
             final_results.append(samples)
             
-            # 调用回调
+            # Call callback
             if save_callback:
                 save_callback(orig_idx, samples)
         
@@ -530,14 +530,14 @@ class MultiAPIRunner(ABC):
         save_callback: Optional[Callable] = None
     ) -> List[List[str]]:
         """
-        批量运行推理，返回格式与VLLMRunner一致
+        Run batched inference with output format aligned to VLLMRunner.
         
         Args:
-            prompts: prompt列表
-            save_callback: 保存回调函数，签名为 callback(idx, samples)
+            prompts: Prompt list
+            save_callback: Save callback function, signature: callback(idx, samples)
             
         Returns:
-            采样结果列表，results[i] = [sample_0, sample_1, ..., sample_{n_sample-1}]
+            Sampling result list, results[i] = [sample_0, sample_1, ..., sample_{n_sample-1}]
         """
         def run_async_in_thread():
             loop = asyncio.new_event_loop()
@@ -556,7 +556,7 @@ class MultiAPIRunner(ABC):
 
 class MultiAPIRunnerWithRetry(MultiAPIRunner):
     """
-    带重试机制的MultiAPIRunner
+    MultiAPIRunner with retry support.
     """
     
     def __init__(
@@ -580,14 +580,14 @@ class MultiAPIRunnerWithRetry(MultiAPIRunner):
         prompt: str, 
         client: openai.AsyncOpenAI,
     ) -> str:
-        """调用API，带重试机制"""
+        """Call API with retry support."""
         for attempt in range(self.max_retries):
             result = await super()._call_api_single(prompt, client)
-            if result:  # 成功获取结果
+            if result:  # Successfully got a result
                 return result
             
             if attempt < self.max_retries - 1:
-                self._debug_log(f"[重试] 第 {attempt + 1} 次失败，{self.retry_delay * (attempt + 1)}秒后重试...")
+                self._debug_log(f"[Retry] Attempt {attempt + 1} failed, retrying in {self.retry_delay * (attempt + 1)}s...")
                 await asyncio.sleep(self.retry_delay * (attempt + 1))
         
         return ""

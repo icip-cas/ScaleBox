@@ -647,7 +647,7 @@ An evaluation framework that uses the sandbox within this codebase for assessmen
 Environment Setup.
 
 ```bash
-conda create --name sandbox_eval python=3.9 -y
+conda create --name sandbox_eval python=3.10 -y
 conda activate sandbox_eval
 
 pip install -r requirements.txt
@@ -657,29 +657,57 @@ Quick Start.
 
 First, create a JSON parameter file in the config directory, which includes benchmark parameter settings and model inference parameter settings.
 
-Then run the following code for evaluation.
+Then run one of the following commands for evaluation.
 ```bash
 cd eval
-python3 sandbox.py --dataset_config config/livecodebench-qwen3-4b.json
-python3 sandbox.py --dataset_config config/livecodebench-qwen2.5-1.5b-distill.json
-python3 sandbox.py --dataset_config config/humaneval-llama3.1-8b-ins.json
-python3 sandbox.py --dataset_config config/mbpp-llama3.1-8b-ins.json
-```
 
-Note, MBPP and MBPP+, HumanEval and HumanEval+ only use different datasets, to evaluate different datasets please manually modify the data address.
+# Option 1: Ray-based multi-GPU inference
+python3 sandbox.py --dataset_config <path/to/config.json>
+
+# Option 2: vLLM server mode
+python3 sandbox.py --dataset_config <path/to/config.json> --use_vllm_server
+
+# Option 3: OpenAI-compatible API inference
+python3 sandbox.py --dataset_config <path/to/config.json> \
+    --api_url <openai_compatible_api_url> \
+    --api_key <your_api_key> \
+    --model_name <your_model_name> \
+    --rpm <requests_per_minute>
+```
+- Option 1 uses Ray-based multi-GPU inference.
+- Option 2 first deploys the model across multiple GPUs with multiple vLLM servers, then performs concurrent inference via multiple API endpoints.
+- Option 3 sends requests to an external OpenAI-compatible API endpoint (`--rpm` is optional; use `0` to disable rate limiting).
+
+<details>
+<summary><strong>Notes</strong></summary>
+
+- If you are running evaluation on NPUs, add the `--npu` flag to the command (applies to all options above).
+- If you only want to generate samples without running evaluation, add the `--sample_only` flag.
+- If you want to reuse an existing sample file, add `--sample_file <path/to/sample_file.jsonl>`.
+- Important config fields (mainly under `infer_parameters`):
+  - `model_path`: model path or model ID used for inference/deployment.
+  - `output_dir`: output directory for sampled results and evaluation outputs.
+  - `endpoint`: ScaleBox evaluation endpoint, typically `http://<ip:port>/common_evaluate_batch`.
+  - `prompt_type`: prompt template/token format by model family. Supported values: `llama-3-instruct`, `deepseek`, `chatml`, `chatml_qwen3`. To add a new type, extend `TEMPLATES` in `eval/utils/template.py`.
+  - `max_completion_tokens`: maximum generated tokens per sample.
+  - `n_sample`: number of sampled completions per prompt.
+  - `num_gpus_total`: total number of GPUs/NPUs used for inference.
+  - `num_gpus_per_model`: number of GPUs/NPUs allocated to one model instance.
+  - `reasoning_model`: set to `true` for reasoning models.
+
+</details>
 
 ### 📊 Evaluation results
 
-| Model | HumanEval | MBPP | HumanEval+ | MBPP+ |
-|-------|-----------|------|------------|-------|
-| Llama3-8B-Ins | 61.59 | 66.93 | 57.32 | 55.56 |
-| Llama3.1-8B-Ins | 69.51 | 71.95 | 65.24 | 60.05 |
+|  | humaneval | humaneval+ | mbpp | mbpp+ | livecodebench | aethercode |
+|-------|-----------|------------|------|-------|---------------|------------|
+| llama3-8b-ins | 60.98 | 57.93 | 62.76 | 54.76 | 10.48 | 00.20 |
+| llama3.1-8b-ins | 70.73 | 65.24 | 66.74 | 57.67 | 6.18 | 00.20 |
+| qwen2.5-1.5b-distill | 47.56 | 44.51 | 40.28 | 37.30 | 16.13 | 00.07 |
+| qwen3-4b | 89.63 | 85.37 | 82.67 | 73.81 | 53.92 | 8.07 |
+| qwen3-8b | 88.41 | 80.48 | 85.95 | 73.28 | 60.09 | 9.18 |
 
-
-| Model | LiveCodeBench |
-|-------|---------------|
-| Qwen2.5-1.5B-Distill | 16.13 |
-| Qwen3-4B | 52.41 |
+To reproduce the results in the table, reuse the config files under `eval/config/<model>` and run with `--use_vllm_server` enabled.
 
 ## 🧪 Special Judge Generation
 

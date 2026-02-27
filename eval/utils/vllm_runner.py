@@ -42,16 +42,16 @@ class VLLMRunner(ABC):
 #############dp#############
         self.num_gpus_total = args.num_gpus_total
         self.num_gpus_per_model = args.num_gpus_per_model
-        self.use_npu = getattr(args, 'npu', False)  # 是否使用NPU
+        self.use_npu = getattr(args, 'npu', False)  # Whether to use NPU
 
         self.use_ray = False
         if self.num_gpus_total // self.num_gpus_per_model > 1:
             self.use_ray = True
             if self.use_npu:
-                # NPU模式：注册NPU资源
+                # NPU mode: register NPU resources
                 ray.init(ignore_reinit_error=True, resources={"NPU": self.num_gpus_total})
             else:
-                # GPU模式：默认行为
+                # GPU mode: default behavior
                 ray.init(ignore_reinit_error=True)
 
 
@@ -70,7 +70,7 @@ class VLLMRunner(ABC):
                 ports.append(current_port)
                 sockets.append(s)
             except OSError:
-                # 如果端口已经被占用，继续尝试下一个端口
+                # If the port is already occupied, keep trying the next port
                 pass
             current_port += 1
 
@@ -103,7 +103,7 @@ class VLLMRunner(ABC):
         if args[2] == 0:
             return model.generate(args[0], args[1], **kwargs)
         else:
-            # args[0]就是分块数据
+            # args[0] is the chunked prompt data
             response = []
             for i in range(0, len(args[0]), args[2]):
                 response.extend(model.generate(args[0][i:i+args[2]],args[1], **kwargs))
@@ -120,12 +120,12 @@ class VLLMRunner(ABC):
 #############dp#############
         if self.use_ray:
             if self.use_npu:
-                # NPU模式：使用NPU资源
+                # NPU mode: use NPU resources
                 get_answers_func = ray.remote(resources={"NPU": self.num_gpus_per_model})(
                     VLLMRunner.single_process_inference
                 ).remote
             else:
-                # GPU模式：使用GPU资源
+                # GPU mode: use GPU resources
                 get_answers_func = ray.remote(num_gpus=self.num_gpus_per_model)(
                     VLLMRunner.single_process_inference
                 ).remote
@@ -176,7 +176,7 @@ class VLLMRunner(ABC):
                 )
                 vllm_outputs = llm.generate(remaining_prompts, self.sampling_params)
                 for index, vllm_output in zip(remaining_indices, vllm_outputs):
-                    outputs[index] = [o.text for o in vllm_output.outputs] # 保存的是n次采样的结果，一共n个结果
+                    outputs[index] = [o.text for o in vllm_output.outputs] # Save n sampled outputs for this prompt
                     if save_callback:
                         save_callback(index, outputs[index])
             return outputs
