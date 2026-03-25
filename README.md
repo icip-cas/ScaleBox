@@ -19,10 +19,11 @@
 ## ✨ Highlights
 
 ### Distributed Execution
-- **Efficiency optimization ([report](efficency_test.md) )**
+- **Efficiency optimization**
     - Distributed deployment: Support for large-scale multi-machine distributed sandbox deployment and load-balanced requests
     - Full parallelization: Support for unit test parallelization and instance-level parallelization
     - Easy to deploy: Support rapid script-based setup, flexible node management, and real-time service monitoring
+    - High Performance: In the 8192-case single-node setting, SCALEBOX achieves 1.59× (x86) and 1.47× (ARM) throughput over verl <sub>Prime</sub>, and 2.63× (x86) and 2.53× (ARM) over SandboxFusion; detailed experimental results are available in ([report](efficency_test.md) ).
 
 ### RL Training
 - **Full compatibility with mainstream RL frameworks**
