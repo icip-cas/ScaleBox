@@ -1,5 +1,3 @@
-We evaluated the performance of our sandbox API against prime_code local evaluation method. Our results demonstrate that it's more efficent and scalable, which is highly suitable for CodeRL training workloads.
-
 ## Experimental Setup
 
 ### Dataset
@@ -7,48 +5,79 @@ We evaluated the performance of our sandbox API against prime_code local evaluat
 - **Sample Size**: 2,048 / 4.096 / 8,192 Python problem instances with reference code
 
 ### Hardware Environment
-- **CPU**: Intel Xeon Platinum 8378A @ 3.00GHz
-- **Cores**: 128 physical cores
-- **Memory**: 1 TB
+- **CPU**: Intel Xeon 6700P Series
+  - **Cores**: 64 Cores / 128 Threads
+  - **Memory**: 256 GB
+
+- **CPU**: HiSilicon Kunpeng 920 7285Z (ARM64)
+  - **Cores**: 320 Cores / 320 Threads
+  - **Memory**: 2.0 TB
 
 ### Sandbox Configuration
 - **Load Balancer**: NGINX
-- **Unit Test Parallelism**: `max_runner_concurrency=16`
+- **Unit Test Parallelism**: `max_runner_concurrency=32, cases_per_subworker=6`
 
 ### Client Configuration
-- **Request Concurrency**: 128
-- **Batch Processing**: Enabled via `common_evaluate_batch`
+- **Request Concurrency**: ScaleBox: `nodes * workers` (1/2/3 nodes: 32/64/96); SandboxFusion: 128; verl <sub>Prime</sub>: 128
 
 ## Performance Results
 
-Our results demonstrate that the sandbox API achieves a **14.57% performance improvement** over the baseline and **36.31% performance improvement** over the original `run_code` API from SandboxFusion. Compared with `run_code` API which send each unit test seperately, our `common_evaluate_batch` API pack the whole test cases, and is more efficent. Our sandbox also scales linearly across multiple nodes. With two sandbox nodes, we achieved a **38.29% reduction** in evaluation time. 
+ScaleBox consistently outperforms both baselines. On x86 (single node), ScaleBox achieves **1.59×-2.88×** throughput versus verl <sub>Prime</sub> and **1.60×-2.63×** versus SandboxFusion; scaling from 1 to 2/3 nodes further improves throughput by **11.9%-27.5%** and **22.4%-58.0%**. On ARM (single node), ScaleBox reaches **1.47×-3.32×** throughput over verl <sub>Prime</sub> and **2.25×-2.89×** over SandboxFusion.
+
+### x86 Platform
 
 ### 2048 Cases
 
-| Evaluation Method | Time (s) | Client Concurrency | Workers | Total CPU Cores |
-|-------------------|----------|-------------------|---------|-----------------|
-| **Baseline** (No Sandbox) | 164.89 | 128 | - | 128 |
-| **Sandbox/run_code** (1 node) | 221.18 | 128 | 32 | 128 |
-| **Sandbox/common_evaluate_batch** (1 node) | 140.86 | 128 | 32 | 128 |
-| **Sandbox/common_evaluate_batch** (2 nodes) | 86.93 | 128 | 64 | 256 |
-| **Sandbox/common_evaluate_batch** (3 nodes) | 66.84 | 128 | 96 | 384 |
+| Method | Nodes | Time (s) | Throughput (tasks/s) | Concurrency | Workers | vCPU |
+|--------|-------|----------|----------------------|-------------|---------|-----|
+| verl <sub>Prime</sub> | 1 | 271.61 | 7.54 (1.00×) | 128 | - | 128 |
+| SandboxFusion | 1 | 150.99 | 13.56 (1.80×) | 128 | 128 | 128 |
+| ScaleBox | 1 | 94.45 | 21.68 (2.88×) | 32 | 32 | 128 |
+| ScaleBox | 2 | 84.41 | 24.26 (3.22×) | 64 | 64 | 256 |
+| ScaleBox | 3 | 77.16 | 26.54 (3.52×) | 96 | 96 | 384 |
 
 ### 4096 Cases
 
-| Evaluation Method | Time (s) | Client Concurrency | Workers | Total CPU Cores |
-|-------------------|----------|-------------------|---------|-----------------|
-| **Baseline** (No Sandbox) | 297.03 | 128 | - | 128 |
-| **Sandbox/run_code** (1 node) | 516.16 | 128 | 128 | 128 |
-| **Sandbox/common_evaluate_batch** (1 node) | 181.74 | 128 | 32 | 128 |
-| **Sandbox/common_evaluate_batch** (2 nodes) | 155.21 | 128 | 64 | 256 |
-| **Sandbox/common_evaluate_batch** (3 nodes) | 118.80 | 128 | 96 | 384 |
+| Method | Nodes | Time (s) | Throughput (tasks/s) | Concurrency | Workers | vCPU |
+|--------|-------|----------|----------------------|-------------|---------|-----|
+| verl <sub>Prime</sub> | 1 | 293.85 | 13.94 (1.00×) | 128 | - | 128 |
+| SandboxFusion | 1 | 278.24 | 14.72 (1.06×) | 128 | 128 | 128 |
+| ScaleBox | 1 | 132.82 | 30.84 (2.21×) | 32 | 32 | 128 |
+| ScaleBox | 2 | 107.70 | 38.03 (2.73×) | 64 | 64 | 256 |
+| ScaleBox | 3 | 92.12 | 44.46 (3.19×) | 96 | 96 | 384 |
 
 ### 8192 Cases
 
-| Evaluation Method | Time (s) | Client Concurrency | Workers | Total CPU Cores |
-|-------------------|----------|-------------------|---------|-----------------|
-| **Baseline** (No Sandbox) | 556.48 | 128 | - | 128 |
-| **Sandbox/run_code** (1 node) | 989.05 | 128 | 128 | 128 |
-| **Sandbox/common_evaluate_batch** (1 node) | 324.01 | 128 | 32 | 128 |
-| **Sandbox/common_evaluate_batch** (2 nodes) | 258.85 | 128 | 64 | 256 |
-| **Sandbox/common_evaluate_batch** (3 nodes) | 183.8 | 128 | 96 | 384 |
+| Method | Nodes | Time (s) | Throughput (tasks/s) | Concurrency | Workers | vCPU |
+|--------|-------|----------|----------------------|-------------|---------|-----|
+| verl <sub>Prime</sub> | 1 | 331.25 | 24.73 (1.00×) | 128 | - | 128 |
+| SandboxFusion | 1 | 548.93 | 14.92 (0.60×) | 128 | 128 | 128 |
+| ScaleBox | 1 | 208.38 | 39.31 (1.59×) | 32 | 32 | 128 |
+| ScaleBox | 2 | 163.40 | 50.13 (2.03×) | 64 | 64 | 256 |
+| ScaleBox | 3 | 131.92 | 62.10 (2.51×) | 96 | 96 | 384 |
+
+### ARM Platform
+
+### 2048 Cases
+
+| Method | Nodes | Time (s) | Throughput (tasks/s) | Concurrency | Workers | vCPU |
+|--------|-------|----------|----------------------|-------------|---------|-----|
+| verl <sub>Prime</sub> | 1 | 470.95 | 4.35 (1.00×) | 128 | - | 320 |
+| SandboxFusion | 1 | 319.82 | 6.40 (1.47×) | 128 | 128 | 128 |
+| ScaleBox | 1 | 141.94 | 14.43 (3.32×) | 32 | 32 | 128 |
+
+### 4096 Cases
+
+| Method | Nodes | Time (s) | Throughput (tasks/s) | Concurrency | Workers | vCPU |
+|--------|-------|----------|----------------------|-------------|---------|-----|
+| verl <sub>Prime</sub> | 1 | 495.34 | 8.27 (1.00×) | 128 | - | 320 |
+| SandboxFusion | 1 | 634.70 | 6.45 (0.78×) | 128 | 128 | 128 |
+| ScaleBox | 1 | 220.13 | 18.61 (2.25×) | 32 | 32 | 128 |
+
+### 8192 Cases
+
+| Method | Nodes | Time (s) | Throughput (tasks/s) | Concurrency | Workers | vCPU |
+|--------|-------|----------|----------------------|-------------|---------|-----|
+| verl <sub>Prime</sub> | 1 | 594.98 | 13.77 (1.00×) | 128 | - | 320 |
+| SandboxFusion | 1 | 1026.52 | 7.98 (0.58×) | 128 | 128 | 128 |
+| ScaleBox | 1 | 404.92 | 20.23 (1.47×) | 32 | 32 | 128 |

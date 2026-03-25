@@ -19,10 +19,11 @@
 ## ✨ Highlights
 
 ### Distributed Execution
-- **Efficiency optimization ([report](efficency_test.md) )**
+- **Efficiency optimization**
     - Distributed deployment: Support for large-scale multi-machine distributed sandbox deployment and load-balanced requests
     - Full parallelization: Support for unit test parallelization and instance-level parallelization
     - Easy to deploy: Support rapid script-based setup, flexible node management, and real-time service monitoring
+    - High Performance: In the 8192-case single-node setting, ScaleBox achieves 1.59× (x86) and 1.47× (ARM) throughput over verl <sub>Prime</sub>, and 2.63× (x86) and 2.53× (ARM) over SandboxFusion; detailed experimental results are available in ([report](efficency_test.md)).
 
 ### RL Training
 - **Full compatibility with mainstream RL frameworks**
@@ -116,9 +117,9 @@ Before deployment, configure the following environment variables:
 # Server configuration
 export HOST=0.0.0.0           # Server host address
 export PORT=8080              # Server port
-export WORKERS=32              # Number of parallel workers for uvicorn (set 1 for single CPU)
-export MAX_MEM=50000000        # Maximum memory limit per process in KB (50GB), or 'unlimited'
-export SAVE_BAD_CASES=false  # Set 'true' to save bad cases for debugging in 'output/{datetime}/'
+export WORKERS=32             # Number of parallel workers for uvicorn (set 1 for single CPU)
+export MAX_MEM=50000000       # Maximum memory limit per process in KB (50GB), or 'unlimited'
+export SAVE_BAD_CASES=false   # Set 'true' to save bad cases for debugging in 'output/{datetime}/'
 ```
 
 #### 💻 Single-Node Deployment
@@ -699,13 +700,13 @@ python3 sandbox.py --dataset_config <path/to/config.json> \
 
 ### 📊 Evaluation results
 
-|  | humaneval | humaneval+ | mbpp | mbpp+ | livecodebench | aethercode |
-|-------|-----------|------------|------|-------|---------------|------------|
-| llama3-8b-ins | 60.98 | 57.93 | 62.76 | 54.76 | 10.48 | 00.20 |
-| llama3.1-8b-ins | 70.73 | 65.24 | 66.74 | 57.67 | 6.18 | 00.20 |
-| qwen2.5-1.5b-distill | 47.56 | 44.51 | 40.28 | 37.30 | 16.13 | 00.07 |
-| qwen3-4b | 89.63 | 85.37 | 82.67 | 73.81 | 53.92 | 8.07 |
-| qwen3-8b | 88.41 | 80.48 | 85.95 | 73.28 | 60.09 | 9.18 |
+| Model | HumanEval | MBPP | HumanEval+ | MBPP+ | LiveCodeBench | AetherCode |
+|-------|-----------|------|------------|-------|---------------|------------|
+| Llama-3-8B-Instruct | 60.98 | 62.76 | 57.93 | 54.76 | 10.48 | 0.20 |
+| Llama-3.1-8B-Instruct | 70.73 | 66.74 | 65.24 | 57.67 | 6.18 | 0.20 |
+| DeepSeek-R1-Distill-Qwen-1.5B | 47.56 | 40.28 | 44.51 | 37.30 | 16.13 | 0.07 |
+| Qwen3-4B | 89.63 | 82.67 | 85.37 | 73.81 | 53.92 | 8.07 |
+| Qwen3-8B | 88.41 | 85.95 | 80.48 | 73.28 | 60.09 | 9.18 |
 
 To reproduce the results in the table, reuse the config files under `eval/config/<model>` and run with `--use_vllm_server` enabled.
 

@@ -65,6 +65,7 @@ class RunConfig(BaseModel):
 
         database: DataBase
         max_runner_concurrency: int = 0
+        cases_per_subworker: int = 1
         cpu_runner_url: Optional[str] = None
         gpu_runner_url: Optional[str] = None
         default_dataset_table: str = 'code_eval_${dataset_id}'
@@ -95,6 +96,10 @@ class RunConfig(BaseModel):
         # logger.info(f'loading config from {config_path}')
         with open(config_path) as f:
             data = yaml.safe_load(f)
+        dataset_config = data.setdefault('dataset', {})
+        cases_per_subworker = os.getenv("SANDBOX_CASES_PER_SUBWORKER")
+        if cases_per_subworker is not None and cases_per_subworker != "":
+            dataset_config["cases_per_subworker"] = int(cases_per_subworker)
         super().__init__(**data)
 
     # moved sigleton logic here until type inference is fixed
