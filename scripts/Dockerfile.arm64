@@ -1,150 +1,148 @@
-FROM --platform=linux/arm64 ubuntu:20.04
+# Copyright 2025 Chinese Information Processing Laboratory, ISCAS.
+# All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
 
-COPY ./scripts/tuna-apt-arm64.sh ./scripts/tuna-apt-arm64.sh
-COPY ./download /workspace/download
+FROM --platform=linux/arm64 ubuntu:22.04
+
+############################ base ############################
+
+WORKDIR /root/sandbox
+
+COPY scripts/tuna-apt-arm64.sh scripts/
 ENV DEBIAN_FRONTEND=noninteractive
-RUN bash ./scripts/tuna-apt-arm64.sh 20.04 \
-    && apt-get update && apt-get install -y curl npm git nano wget vim unzip sudo cgroup-tools iproute2 iptables \
+RUN bash scripts/tuna-apt-arm64.sh 22.04 && \
+    apt-get update && apt-get install -y curl npm git nano wget vim unzip sudo cgroup-tools iproute2 iptables \
     # iverilog build deps
     autoconf gperf flex bison \
     # bash scripting utils
     bc
 
-# python 3.11 & poetry
-COPY ./scripts/install-miniconda-arm64.sh ./scripts/install-miniconda-arm64.sh
-RUN bash ./scripts/install-miniconda-arm64.sh 3.11
-ENV PATH="/root/miniconda3/bin:${PATH}"
+# python 3.11 & poetry 1.7.0 (arm64)
+COPY scripts/install-miniconda-arm64.sh scripts/
+RUN bash scripts/install-miniconda-arm64.sh 3.11
+ENV PATH=/root/miniconda3/bin:${PATH}
 RUN wget https://veml.tos-cn-beijing.volces.com/condarc -O ~/.condarc && \
-    pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/
-RUN curl -sSL https://install.python-poetry.org | POETRY_VERSION=1.7.0 python3 -
-ENV PATH=/root/.local/bin:$PATH
+    pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ && \
+    # install poetry without official script
+    pip install poetry==1.7.0 && \
+    poetry config virtualenvs.create false
 
-# golang 1.23.3 (ARM64)
-RUN curl -o /workspace/download/go.tar.gz -SL https://golang.google.cn/dl/go1.23.3.linux-arm64.tar.gz \
-    && tar -zxf /workspace/download/go.tar.gz -C /usr/local && rm /workspace/download/go.tar.gz
+# 1. golang 1.23.3 (arm64)
+RUN curl -fsSL https://golang.google.cn/dl/go1.23.3.linux-arm64.tar.gz | tar -xzC /usr/local
 ENV PATH=/bin:/usr/local/go/bin:$PATH
 
-# nodejs 20.11.0 (ARM64)
-RUN curl -o /workspace/download/node.tar.gz -SL https://nodejs.org/dist/v20.11.0/node-v20.11.0-linux-arm64.tar.gz \
-    && mkdir -p /usr/local/lib/nodejs && tar -zxf /workspace/download/node.tar.gz -C /usr/local/lib/nodejs && mv /usr/local/lib/nodejs/node-v20.11.0-linux-arm64 /usr/local/lib/nodejs/node \
-    && rm /workspace/download/node.tar.gz
-ENV PATH=/usr/local/lib/nodejs/node/bin:$PATH
+# 2. nodejs 20.11.0 (arm64)
+RUN mkdir -p /usr/local/lib/nodejs \
+    && curl -fsSL https://nodejs.org/dist/v20.11.0/node-v20.11.0-linux-arm64.tar.gz | tar -xzC /usr/local/lib/nodejs --strip-components=1
+ENV PATH=/usr/local/lib/nodejs/bin:$PATH
 ENV NODE_PATH=/usr/local/lib/node_modules
 RUN npm install -g typescript@5.3.3 tsx@4.7.1
 
-# gcc 9
+# 3. gcc 9 & boost
 RUN apt-get update && apt-get install -y build-essential g++ libboost-all-dev
 
-# OpenSSL (使用ARM64兼容的源码编译)
-RUN curl -o /workspace/download/openssl.tar.gz -SL https://www.openssl.org/source/old/3.0/openssl-3.0.11.tar.gz \
-    && tar -zxf /workspace/download/openssl.tar.gz && cd openssl-3.0.11 && ./Configure linux-aarch64 && make && make install \
-    && rm /workspace/download/openssl.tar.gz && cd .. && rm -r openssl-3.0.11
+# 4. openssl 3.0.11 (arm64)
+RUN mkdir -p /tmp/openssl \
+    && curl -fsSL https://www.openssl.org/source/old/3.0/openssl-3.0.11.tar.gz | tar -xzC /tmp/openssl --strip-components=1 \
+    && cd /tmp/openssl && ./Configure linux-aarch64 && make -j$(nproc) && make install \
+    && cd /root/sandbox && rm -rf /tmp/openssl
 ENV PATH=/usr/bin/openssl:$PATH
 
-# jdk 21 (ARM64)
-RUN curl -o /workspace/download/jdk.tar.gz -SL https://download.oracle.com/java/21/latest/jdk-21_linux-aarch64_bin.tar.gz \
-    && mkdir /usr/java && tar -zxf /workspace/download/jdk.tar.gz -C /usr/java && rm /workspace/download/jdk.tar.gz \
-    && mv /usr/java/jdk-21* /usr/java/jdk-21
+# 5. jdk 21 (arm64)
+RUN mkdir -p /usr/java/jdk-21 \
+    && curl -fsSL https://download.oracle.com/java/21/latest/jdk-21_linux-aarch64_bin.tar.gz | tar -xzC /usr/java/jdk-21 --strip-components=1
 ENV JAVA_HOME=/usr/java/jdk-21
 ENV PATH=$JAVA_HOME/bin:$PATH
 
-# dotnet 8.0 (使用ARM64仓库) 使用官方安装脚本
-RUN apt-get update \
-    && apt-get install -y wget tar \
-    && wget https://dot.net/v1/dotnet-install.sh -O dotnet-install.sh \
-    && chmod +x dotnet-install.sh \
-    && ./dotnet-install.sh --install-dir /usr/share/dotnet --channel 8.0 --version latest \
-    && ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet \
-    && rm dotnet-install.sh
+# 6. dotnet 8.0 (arm64)
+RUN curl -L -o /tmp/dotnet-install.sh https://dot.net/v1/dotnet-install.sh \
+    && chmod +x /tmp/dotnet-install.sh \
+    && /tmp/dotnet-install.sh --install-dir /usr/share/dotnet --channel 8.0 --version latest \
+    && rm -f /tmp/dotnet-install.sh \
+    && ln -s /usr/share/dotnet/dotnet /usr/bin/dotnet
 
-# php 7.4.3
-# RUN apt-get install -y php-cli=2:7.4+75
-# php 8.1
+# 7. php 8.1
 RUN apt-get install -y php8.1-cli
 
-# rust (ARM64工具链)
+# 8. rust (arm64)
 ENV RUSTUP_DIST_SERVER=https://mirrors.ustc.edu.cn/rust-static
 ENV RUSTUP_UPDATE_ROOT=https://mirrors.ustc.edu.cn/rust-static/rustup
 RUN curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain 1.76.0 --profile minimal --target aarch64-unknown-linux-gnu
-ENV PATH="/root/.cargo/bin:${PATH}"
-ENV CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+ENV PATH=/root/.cargo/bin:${PATH}
 
-# ubuntu:20.04 R, lua, ruby, julia, perl, scala
-RUN apt-get install -y r-base lua5.2 luarocks ruby-full julia scala \
+# 9. R, lua, ruby, julia, perl, scala (arm64)
+RUN apt-get install -y r-base lua5.2 liblua5.2-dev luarocks ruby-full perl scala \
     && luarocks install luaunit \
     && PERL_MM_USE_DEFAULT=1 cpan Test::Deep Data::Compare
-# ubuntu:22.04
-# RUN apt-get install -y r-base ruby-full scala \
-#     && PERL_MM_USE_DEFAULT=1 cpan Test::Deep Data::Compare
+RUN curl -fsSL https://julialang-s3.julialang.org/bin/linux/aarch64/1.10/julia-1.10.0-linux-aarch64.tar.gz | tar -xzC /usr/local --strip-components=1
 
-# D
-RUN apt install -y clang lld \
-    && cd /workspace/download \
-    && tar xf ldc2-1.38.0-linux-aarch64.tar.xz \
-    && sudo mv ldc2-1.38.0-linux-aarch64 /opt/ldc \
-    && echo 'export PATH=/opt/ldc/bin:$PATH' | sudo tee /etc/profile.d/ldc.sh \
-    && . /etc/profile.d/ldc.sh \
-    && ldc2 --version
+# 10. D (arm64)
+RUN apt install -y clang lld xz-utils \
+    && mkdir -p /opt/ldc \
+    && curl -fsSL https://github.com/ldc-developers/ldc/releases/download/v1.38.0/ldc2-1.38.0-linux-aarch64.tar.xz | tar -xJC /opt/ldc --strip-components=1
+ENV PATH=/opt/ldc/bin:${PATH}
 
-# kotlin (JVM-based, 架构无关)
-RUN apt-get update && apt-get install -y aria2 \
-    && aria2c -x 16 -s 16 -o /tmp/kotlin-compiler.zip https://github.com/JetBrains/kotlin/releases/download/v2.0.0/kotlin-compiler-2.0.0.zip \
-    && mkdir -p /usr/local/kotlin \
-    && unzip /tmp/kotlin-compiler.zip -d /usr/local/kotlin \
-    && rm -f /tmp/kotlin-compiler.zip \
-    && apt-get purge -y aria2 && rm -rf /var/lib/apt/lists/*
+# 11. kotlin
+RUN curl -L -o /tmp/kotlin.zip https://github.com/JetBrains/kotlin/releases/download/v2.0.0/kotlin-compiler-2.0.0.zip \
+    && unzip /tmp/kotlin.zip -d /usr/local/kotlin && rm /tmp/kotlin.zip
 ENV PATH=/usr/local/kotlin/kotlinc/bin:$PATH
 
-# iverilog && verilog-eval (源码编译支持ARM64，需要先安装 D 语言)
-RUN cd /workspace \
-    && git clone https://github.com/steveicarus/iverilog.git && cd iverilog \
-    && git checkout 01441687235135d1c12eeef920f75d97995da333 \
-    && sh ./autoconf.sh && ./configure --build=aarch64-unknown-linux-gnu \
-    && make -j4 \
-    && make install \
-    && cd /workspace \
-    && git clone https://github.com/NVlabs/verilog-eval \
-    && cd verilog-eval && git checkout 4b9b16e92f1d9cc520afbfa3ecd5a2f20a350fd5 \
-    && sed -i '79d;112d' ./verilog_eval/execution.py \
-    && cd ../ && pip install -e verilog-eval
+# 12. iverilog & verilog-eval
+RUN mkdir -p /tmp/iverilog_build && \
+    cd /tmp/iverilog_build && \
+    git clone https://github.com/steveicarus/iverilog.git . && \
+    git checkout 01441687235135d1c12eeef920f75d97995da333 && \
+    sh ./autoconf.sh && \
+    ./configure --build=aarch64-unknown-linux-gnu && \
+    make -j$(nproc) && \
+    make install && \
+    cd /root && \
+    rm -rf /tmp/iverilog_build && \
+    git clone https://github.com/NVlabs/verilog-eval && \
+    cd verilog-eval && \
+    git checkout 4b9b16e92f1d9cc520afbfa3ecd5a2f20a350fd5 && \
+    sed -i '79d;112d' ./verilog_eval/execution.py && \
+    pip install --no-cache-dir -e .
 
-# lean 4 (官方支持ARM64)
+# 13. lean 4
 RUN curl https://raw.githubusercontent.com/leanprover/elan/master/elan-init.sh -sSf | sh -s -- -y --default-toolchain leanprover/lean4:v4.10.0-rc2
 ENV PATH=/root/.elan/bin:$PATH
 
-# Racket (使用ARM64包)
+# 14. Racket (arm64)
 RUN apt-get update --allow-insecure-repositories -y && apt-get install -y racket
 
-# # Swift (ARM64官方构建)
-RUN curl -o /workspace/download/swift.tar.gz -SL https://download.swift.org/swift-5.10.1-release/ubuntu2004-aarch64/swift-5.10.1-RELEASE/swift-5.10.1-RELEASE-ubuntu20.04-aarch64.tar.gz \
-    && cd /workspace/download \
-    && tar zxf swift.tar.gz \
-    && mkdir -p /usr/local/swift \
-    && mv swift-5.10.1-RELEASE-ubuntu20.04-aarch64/usr/* /usr/local/swift \
-    && rm -f /workspace/download/swift.tar.gz
+# 15. Swift (arm64)
+RUN mkdir -p /usr/local/swift \
+    && curl -fsSL https://download.swift.org/swift-5.10.1-release/ubuntu2004-aarch64/swift-5.10.1-RELEASE/swift-5.10.1-RELEASE-ubuntu20.04-aarch64.tar.gz | tar -xzC /usr/local/swift --strip-components=2
 ENV PATH=/usr/local/swift/bin:$PATH
 
-# 清理和验证
+# register
 RUN update-alternatives --install /usr/bin/java java $JAVA_HOME/bin/java 20000 \
     && update-alternatives --install /usr/bin/javac javac $JAVA_HOME/bin/javac 20000 \
-    && aarch64-linux-gnu-gcc --version \
-    && dotnet --info | grep RID \
-    && go version | grep arm64 \
-    && node -p "process.arch" | grep arm64 \
-    && java -version \
-    && rustc -Vv | grep host | grep aarch64
+    && env
 
-# RUN lean --version
+############################ server ############################
 
-COPY ./runtime/go ./runtime/go
 # download and cache go deps
-RUN cd ./runtime/go \
+COPY runtime/go/ /root/sandbox/runtime/go/
+RUN cd runtime/go \
     && go env -w GOPROXY="https://goproxy.cn|direct" \
     && go build
 
-COPY ./runtime/node /root/sandbox/runtime/node
 # also install puppetter chrome requirements (TODO: keep effective packages only)
-RUN cd /root/sandbox/runtime/node && \
+COPY runtime/node/ /root/sandbox/runtime/node/
+RUN cd runtime/node && \
     npm config set registry https://registry.npmmirror.com && \
     npm ci
 RUN apt-get update -y && apt-get install -y fontconfig locales gconf-service libasound2 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgcc1 libgconf-2-4 libgdk-pixbuf2.0-0 libglib2.0-0 libgtk-3-0 libnspr4 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 ca-certificates fonts-liberation libappindicator1 libnss3 lsb-release xdg-utils libgbm-dev libgmp-dev libmpfr-dev libmpc-dev
@@ -152,22 +150,29 @@ RUN apt-get update -y && apt-get install -y fontconfig locales gconf-service lib
 # cache dotnet
 RUN dotnet new console -o /tmp/dotnet && dotnet run --project /tmp/dotnet
 
-COPY ./runtime/python ./runtime/python
-RUN cd ./runtime/python && \
+# cache lean
+COPY ./runtime/lean /root/sandbox/runtime/lean
+RUN cd /root/sandbox/runtime/lean && lake build
+
+# python runtime
+COPY runtime/python/ /root/sandbox/runtime/python/
+RUN cd runtime/python && \
     sed -i 's/\r$//' install-python-runtime.sh && \
     bash install-python-runtime.sh
 # fix pyqt error, see https://github.com/NVlabs/instant-ngp/discussions/300
 ENV QT_QPA_PLATFORM=offscreen
 ENV OMP_NUM_THREADS=2
 
-COPY ./ /root/sandbox
-WORKDIR /root/sandbox
-RUN poetry config virtualenvs.create false \
-    # TODO: find out why poetry throws error without this
-    && touch /root/miniconda3/pyvenv.cfg \
-    && poetry source add tuna https://pypi.tuna.tsinghua.edu.cn/simple --default \
-    && poetry install \
-    && cd ./docs \
+# install sandbox
+COPY pyproject.toml poetry.lock* README.md /root/sandbox/
+RUN poetry source add tuna https://pypi.tuna.tsinghua.edu.cn/simple --default && \
+    poetry install --no-root && \
+    # fix packaging version conflict
+    rm -rf /root/miniconda3/lib/python3.11/site-packages/packaging-26.0.dist-info
+
+# build docs
+COPY docs/ /root/sandbox/docs/
+RUN cd ./docs \
     && npm ci \
     && npm run build
 
@@ -176,14 +181,24 @@ RUN useradd -m app && echo 'app:app' | chpasswd \
     && mkdir -p /mnt \
     && chmod og+rwx /mnt
 
-CMD bash /root/sandbox/scripts/run.sh
+############################ server (addition) ############################
 
-RUN mkdir -p /var/run/sshd
-RUN apt-get update
-RUN apt-get update --fix-missing && apt-get install -y wget g++ git make libdpkg-perl sudo vim unzip unrar openssh-server openssh-client ca-certificates psmisc screen --no-install-recommends
-RUN rustup default stable 
-RUN apt-get install -y nginx
-RUN apt-get install -y python3-pip
-RUN python3 -m pip install supervisor
-RUN rm -rf /root/sandbox
+ENV DEBIAN_FRONTEND=noninteractive \
+	PIP_NO_CACHE_DIR=1
+
+RUN set -eux; \
+	mkdir -p /var/run/sshd; \
+	apt-get update --fix-missing; \
+	apt-get install -y --no-install-recommends \
+        # fix perl
+		libdpkg-perl \
+		unrar \
+		openssh-server \
+		openssh-client \
+		psmisc \
+		screen \
+		nginx; \
+	pip install supervisor; \
+	rm -rf /var/lib/apt/lists/* /root/sandbox
+
 WORKDIR /root

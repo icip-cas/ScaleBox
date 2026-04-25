@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # python 3.11 & poetry
 # Install miniconda, if conda is not installed
 if ! command -v conda &> /dev/null

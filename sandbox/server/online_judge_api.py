@@ -42,7 +42,12 @@ from sandbox.registry import get_all_dataset_ids, get_coding_class_by_dataset, g
 
 from sandbox.utils.common import ensure_json
 from sandbox.utils.extraction import default_extract_helper
-from sandbox.utils.testing import check_stdio_test_cases_parallel, check_function_call_test_cases_parallel
+from sandbox.utils.testing import (
+    check_function_call_test_cases_parallel,
+    check_python_function_call_test_cases_single_worker_exec,
+    check_python_stdio_test_cases_single_worker_exec,
+    check_stdio_test_cases_parallel,
+)
 from sandbox.database import get_row_by_id_in_table
 
 oj_router = APIRouter()
@@ -269,11 +274,17 @@ async def common_evaluate_batch(request: SubmitRequest) -> EvalResult:
             request.config.provided_data = convert_stdio_data_format(request.config.provided_data)
             row = await get_row_by_id_in_table(request, table_name=None, columns=['test'])
             cases = [GeneralStdioTest(**case) for case in ensure_json(row, 'test')]
-            outcomes = await check_stdio_test_cases_parallel(code, cases, request.config)
+            if request.config.language == "python":
+                outcomes = await check_python_stdio_test_cases_single_worker_exec(code, cases, request.config)
+            else:
+                outcomes = await check_stdio_test_cases_parallel(code, cases, request.config)
         # function call eval
         else:
             cases = request.config.provided_data['test_cases']
-            outcomes = await check_function_call_test_cases_parallel(code, cases, request.config)
+            if request.config.language == "python":
+                outcomes = await check_python_function_call_test_cases_single_worker_exec(code, cases, request.config)
+            else:
+                outcomes = await check_function_call_test_cases_parallel(code, cases, request.config)
         
         result = EvalResult(id=request.id,
                                 accepted=all([o.passed for o in outcomes]),

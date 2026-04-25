@@ -1,0 +1,37 @@
+# Copyright 2025 Chinese Information Processing Laboratory, ISCAS.
+# All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+FROM vemlp-cn-beijing.cr.volces.com/preset-images/code-sandbox:server-20250609
+
+ENV DEBIAN_FRONTEND=noninteractive \
+	PIP_NO_CACHE_DIR=1
+
+RUN set -eux; \
+	mkdir -p /var/run/sshd; \
+	apt-get update --fix-missing; \
+	apt-get install -y --no-install-recommends \
+		# fix perl
+		libdpkg-perl \
+		unrar \
+		openssh-server \
+		openssh-client \
+		psmisc \
+		screen \
+		nginx \
+		python3-pip; \
+	pip install supervisor; \
+	rm -rf /var/lib/apt/lists/* /root/sandbox
+
+WORKDIR /root

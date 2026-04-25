@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # Extract upstream servers from nginx config
 NGINX_CONF="server/nginx.conf"
 ADDRS=$(grep -E "server\s+[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+:[0-9]+" "$NGINX_CONF" | \

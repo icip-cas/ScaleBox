@@ -425,7 +425,7 @@ def function_call_evaluate(completion, language):
     print(json.dumps(result, indent=2))
     return result
 
-# racket, D_ut, lua, julia, nodejs, python, cpp, go, java, typescript, csharp, rust, php, bash, ruby, perl, scala, swift
+# racket, D_ut, lua, julia, nodejs, python, cpp, go, java, typescript, csharp, rust, php, bash, ruby, perl, scala, swift, kotlin_script, R, verilog
 def test_racket_function_call():
     completion = """
 #lang racket
@@ -588,6 +588,37 @@ func add(a: Int, b: Int) -> Int {
     result = function_call_evaluate(completion, "swift")
     assert result['accepted'] == True
 
+def test_kotlin_function_call():
+    completion = """
+fun add(a: Int, b: Int): Int {
+    return a + b
+}
+"""
+    result = function_call_evaluate(completion, "kotlin_script")
+    assert result['accepted'] == True
+
+def test_r_function_call():
+    completion = """
+add <- function(a, b) {
+    return(a + b)
+}
+"""
+    result = function_call_evaluate(completion, "R")
+    assert result['accepted'] == True
+
+def test_verilog_function_call():
+    completion = """
+function integer add;
+    input integer a;
+    input integer b;
+    begin
+        add = a + b;
+    end
+endfunction
+"""
+    result = function_call_evaluate(completion, "verilog")
+    assert result['accepted'] == True
+
 def stdio_evaluate(completion, language):
     payload = {
         "completion": f"""```{language}\n{completion}\n```""",
@@ -628,7 +659,7 @@ def stdio_evaluate(completion, language):
     print(json.dumps(result, indent=2))
     return result
 
-# racket, D_ut, lua, julia, nodejs, python, cpp, go, java, typescript, csharp, rust, php, bash, ruby, perl, scala, swift
+# racket, D_ut, lua, julia, nodejs, python, cpp, go, java, typescript, csharp, rust, php, bash, ruby, perl, scala, swift, kotlin_script, R, verilog
 
 def test_racket_stdio_evaluate():
     completion = """
@@ -915,6 +946,59 @@ if let input = readLine() {
 }
 """
     result = stdio_evaluate(completion, "swift")
+    assert result['accepted'] == True
+
+def test_kotlin_stdio_evaluate():
+    completion = """
+fun add(a: Int, b: Int): Int {
+    return a + b
+}
+
+val input = readLine()!!.trim().split(" ").map { it.toInt() }
+println(add(input[0], input[1]))
+"""
+    result = stdio_evaluate(completion, "kotlin_script")
+    assert result['accepted'] == True
+
+def test_r_stdio_evaluate():
+    completion = """
+add <- function(a, b) {
+    return(a + b)
+}
+
+line <- readLines("stdin", n = 1)
+nums <- as.integer(strsplit(trimws(line), "\\\\s+")[[1]])
+cat(add(nums[1], nums[2]))
+"""
+    result = stdio_evaluate(completion, "R")
+    assert result['accepted'] == True
+
+def test_verilog_stdio_evaluate():
+    completion = """
+module tb;
+    integer a, b;
+    integer res;
+
+    function integer add;
+        input integer x;
+        input integer y;
+        begin
+            add = x + y;
+        end
+    endfunction
+
+    initial begin
+        if ($fscanf(32'h8000_0000, "%d %d", a, b) != 2) begin
+            $display("0");
+            $finish;
+        end
+        res = add(a, b);
+        $display("%0d", res);
+        $finish;
+    end
+endmodule
+"""
+    result = stdio_evaluate(completion, "verilog")
     assert result['accepted'] == True
 
 def stdio_batch_evaluate(completion, language):

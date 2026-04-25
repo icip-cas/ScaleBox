@@ -1,4 +1,4 @@
-# [Verl](https://github.com/volcengine/verl) Compatibility
+# [Verl](https://github.com/volcengine/verl) Integration Guide
 
 ## Data Format
 Here is an example of Function Call data.
@@ -27,11 +27,12 @@ And an example of Stdin-Stdout:
 ```
 
 ## Verl Reward Score
-Modify [verl/utils/reward_score/sandbox_fusion](https://github.com/MrZhengXin/verl_sandbox/tree/main/verl/utils/reward_score/sandbox_fusion) and [verl/workers/reward_manager/prime.py](https://github.com/MrZhengXin/verl_sandbox/blob/main/verl/workers/reward_manager/prime.py) to support the sandbox `common_evaluate_batch` API.
+We already provide a custom reward function file `scalebox.py`. You can use it directly in verl training.
 
 ## Verl Training Arguments
-Similarly to the verl official sandbox usage example, add the following arguments to the training script:
+Add the following arguments to the training script:
 ```bash
-    reward_model.sandbox_fusion.url='http://0.0.0.0:8080/common_evaluate_batch' \
-    reward_model.sandbox_fusion.max_concurrent=64 \
+    custom_reward_function.path=scalebox.py \
+    custom_reward_function.name=compute_score \
+    +custom_reward_function.reward_kwargs.sandbox_fusion_url=$SCALEBOX_URL \
 ```

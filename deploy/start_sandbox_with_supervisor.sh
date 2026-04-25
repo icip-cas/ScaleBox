@@ -1,26 +1,108 @@
-# Install supervisor
-sudo python3 -m pip install supervisor
+#!/usr/bin/env bash
 
-REPO_DIR=$(pwd)
+set -euo pipefail
 
-# Configure supervisor
-cd supervisor
-echo_supervisord_conf > supervisord.conf
-printf "[inet_http_server]\nport = 127.0.0.1:9001\n[program:main]\n# Set the command to execute in the specified directory\ndirectory=${REPO_DIR}\n# Here is the startup command of the project you want to manage\ncommand=/bin/make run-distributed\n# Which user to run the process as\n# user=root\n# Automatically apply this when supervisor starts\nautostart=true\n# Automatically restart the process after the process exits\nautorestart=true\n# How long does the process continue to run before it is considered successful\nstartsecs=1\n# number of retries\nstartretries=5\n# stderr log output location\nstderr_logfile=${REPO_DIR}/supervisor/logfile/stderr.log\n# stdout log output location\nstdout_logfile=${REPO_DIR}/supervisor/logfile/stdout.log\n" >> supervisord.conf
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SUPERVISOR_DIR="${PROJECT_ROOT}/supervisor"
+LOG_DIR="${SUPERVISOR_DIR}/logfile"
+SUPERVISOR_CONF="${SUPERVISOR_DIR}/supervisord.conf"
+SUPERVISOR_SOCK="${SUPERVISOR_DIR}/supervisor.sock"
+SUPERVISOR_PID="${SUPERVISOR_DIR}/supervisord.pid"
+SUPERVISOR_PORT="${SUPERVISOR_PORT:-9001}"
 
-# Make dir
-mkdir -p logfile
+log() {
+    echo "[start_sandbox_with_supervisor] $*"
+}
 
-# Clear previous log
-> logfile/stderr.log
-> logfile/stdout.log
+die() {
+    echo "Error: $*" >&2
+    exit 1
+}
 
-# Close previous supervisor
-supervisorctl shutdown > /dev/null 2>&1
-# Start supervisor
-supervisord -c supervisord.conf
-# Check the status of the process
-for i in $(seq 1 5); do
-    supervisorctl status
+run_python_pip_install() {
+    if [[ "${EUID}" -eq 0 ]]; then
+        python3 -m pip install supervisor
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo python3 -m pip install supervisor
+    else
+        die "supervisor is not installed and sudo is not available"
+    fi
+}
+
+#############################################################
+# Validate Inputs And Dependencies
+#############################################################
+
+[[ "${SUPERVISOR_PORT}" =~ ^[0-9]+$ ]] || die "SUPERVISOR_PORT must be an integer, got: ${SUPERVISOR_PORT}"
+(( SUPERVISOR_PORT >= 1 && SUPERVISOR_PORT <= 65535 )) || die "SUPERVISOR_PORT must be in [1, 65535], got: ${SUPERVISOR_PORT}"
+command -v make >/dev/null 2>&1 || die "make command not found"
+
+if ! command -v supervisord >/dev/null 2>&1 || ! command -v supervisorctl >/dev/null 2>&1; then
+    log "Installing supervisor via pip"
+    run_python_pip_install
+fi
+
+command -v supervisord >/dev/null 2>&1 || die "supervisord not found after installation"
+command -v supervisorctl >/dev/null 2>&1 || die "supervisorctl not found after installation"
+
+#############################################################
+# Prepare Supervisor Workspace
+#############################################################
+
+mkdir -p "${SUPERVISOR_DIR}" "${LOG_DIR}"
+
+cat > "${SUPERVISOR_CONF}" <<EOF
+[unix_http_server]
+file=${SUPERVISOR_SOCK}
+
+[supervisord]
+logfile=${LOG_DIR}/supervisord.log
+pidfile=${SUPERVISOR_PID}
+childlogdir=${LOG_DIR}
+
+[rpcinterface:supervisor]
+supervisor.rpcinterface_factory = supervisor.rpcinterface:make_main_rpcinterface
+
+[supervisorctl]
+serverurl=unix://${SUPERVISOR_SOCK}
+
+[inet_http_server]
+port=127.0.0.1:${SUPERVISOR_PORT}
+
+[program:main]
+directory=${PROJECT_ROOT}
+command=make run-distributed
+autostart=true
+autorestart=true
+startsecs=1
+startretries=5
+stderr_logfile=${LOG_DIR}/stderr.log
+stdout_logfile=${LOG_DIR}/stdout.log
+EOF
+
+#############################################################
+# Stop Existing Instance And Start New One
+#############################################################
+
+# Clear run logs for this launch while keeping supervisord daemon log history.
+: > "${LOG_DIR}/stderr.log"
+: > "${LOG_DIR}/stdout.log"
+
+if [[ -S "${SUPERVISOR_SOCK}" ]]; then
+    log "Stopping existing supervisor instance"
+    supervisorctl -c "${SUPERVISOR_CONF}" shutdown >/dev/null 2>&1 || true
+fi
+
+log "Starting supervisor"
+supervisord -c "${SUPERVISOR_CONF}"
+
+#############################################################
+# Report Process Status
+#############################################################
+
+log "Checking program status"
+for _ in {1..5}; do
+    supervisorctl -c "${SUPERVISOR_CONF}" status || true
     sleep 1
 done

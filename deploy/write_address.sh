@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 HOST=$1
 PORT=$2
 SERVER_DIR=${SERVER_DIR:-"server"}

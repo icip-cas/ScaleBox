@@ -1,64 +1,53 @@
-# ScaleBox
+<div align="center">
 
-<!-- <p align="center"><img src="logo.png" alt="ICIP Sandbox Logo" width="200"></p> -->
+<img src="./docs/static/img/scalebox_logo.png" width="70%">
 
-![logo](logo.png)
+<div align="center">
+    ⚡ A scalable sandbox for distributed code execution, RL training and unified benchmarking
+    <br>
+    <br>
+</div>
 
-⚡ A scalable sandbox for distributed code execution, RL training and unified benchmarking | 🛡️ Distributed | 🌐 Multi-language | 🔥 Efficient
+[![GitHub Repo stars](https://img.shields.io/github/stars/icip-cas/ScaleBox)](https://github.com/icip-cas/ScaleBox/stargazers)
+[![LICENSE](https://img.shields.io/pypi/l/evalplus)](https://github.com/icip-cas/ScaleBox/blob/main/LICENSE)
+</div>
 
 ## 📋 Table of Contents
 - [✨ Highlights](#-highlights)
 - [🎯 Features](#-features)
 - [🚀 Usage](#-usage)
-- [✏️ Unified Evaluation](#-unified-evaluation)
-- [🧪 Special Judge Generation](#-special-judge-generation)
+- [📊 Unified Evaluation](#-unified-evaluation)
+- [🧾 Special Judge Generation](#-special-judge-generation)
 - [📝 Citation](#-citation)
 - [🙏 Acknowledgement](#-acknowledgement)
 - [📄 License](#-license)
 
 ## ✨ Highlights
 
-### Distributed Execution
-- **Efficiency optimization ([report](efficency_test.md) )**
-    - Distributed deployment: Support for large-scale multi-machine distributed sandbox deployment and load-balanced requests
-    - Full parallelization: Support for unit test parallelization and instance-level parallelization
-    - Easy to deploy: Support rapid script-based setup, flexible node management, and real-time service monitoring
+- **High-Performance Distributed Engine**
+    - Elastic Scaling: Optimized for large-scale multi-machine distributed deployment with built-in load balancing and real-time service monitoring.
+    - Massive Parallelization: Native support for instance-level and unit-test parallelization.
+    - Superior Throughput: ScaleBox achieves up to 2.63× (x86) and 2.53× (ARM) throughput compared to SandboxFusion, and 1.59× over verl <sub>Prime</sub> in large-scale settings. Detailed results are available in [efficency test report](./reports/efficiency_test_report.md).
 
-### RL Training
-- **Full compatibility with mainstream RL frameworks**
-  - Support for NVIDIA environment with [verl](verl_compatibility.md), and Ascend NPU environment with [verl](https://github.com/volcengine/verl?tab=readme-ov-file) and [MindSpeed-RL](https://github.com/jszheng21/MindSpeed-RL/blob/master/README_adaptation.md)
-  - Support for mixed Docker environment with RL training and sandbox calls, enabling [one-click deployment and RL training](deploy/start_verl_sandbox.sh)
+- **RL-Native Integration**
+    - Full Ecosystem Compatibility: Out-of-the-box support for mainstream RL frameworks including [verl](./integrations/verl/verl_integration_guide.md) (NVIDIA/Ascend) and [MindSpeed-RL](./integrations/mindspeed_rl/mindspeed_rl_integration_guide.md) (Ascend).
+    - Unified RL Interface: A single request interface for diverse training paradigms: stdin-stdout (with Special Judge), function call, and assert (MultiPL-E format).
+    - Hybrid Deployment: Seamless [one-click deployment](deploy/start_verl_sandbox.sh) using Docker environments that bridge RL training and sandbox execution.
 
-- **Unified interface**: Support for common code RL training data unified request interface
-  - Stdin-out (including special judge)
-  - Function call
-  - Assert (MultiPL-E format)
+- **Precision Evaluation & Automation**
+    - Automated Special Judge: A lightweight pipeline that automatically classifies complex problems and generates custom checkers for floating-point tolerance or multiple valid solutions.
+    - Unified Benchmark Suite: Simplified one-click evaluation for common code benchmarks, supporting both Instruct-type and Reasoning-type models.
 
-- **Better monitoring and management**
-  - Error monitoring
-  - Nginx logs
-  - Auto restart
-
-### Unified Evaluation
-- **Simple-to-use evaluation for common code benchmarks**
-  - Easy-to-use: One-click evaluation of multiple models and benchmarks by simply modifying configuration files
-  - Highly Efficiency: Support for high-efficiency distributed inference and evaluation for both instruct and reasoning models
-
-### Special Judge Generation
-- **Lightweight pipeline for special judge generation**
-  - More precise reward assignment: Providing custom checker for problems with multiple valid solutions or floating-point tolerance, which stdout comparison may fail to evaluate correctly
-  - Automatic construction: One-click classification of problems requiring special judges and generation of corresponding judge programs
-
-### Sandbox Usability
-- Parameter configuration
-- MCP support
-- Comprehensive test scripts
+- **Production-Ready Usability**
+    - Robust Monitoring: Integrated with Nginx log integration, automated service restarts, and detailed error tracking.
+    - Modern Ecosystem: Native support for MCP (Model Context Protocol) and flexible parameter configuration for rapid research iterations.
 
 ## 🎯 Features
 
-**Code Runner**: Run and return the result of a code snippet
+**Code Runner**: Run and return the result of a code snippet.
 
-Supported languages:
+<details>
+<summary>Supported 21 languages:</summary>
 
 - Python (python, pytest)
 - C++
@@ -82,7 +71,11 @@ Supported languages:
 - CUDA (GPU)
 - Python (GPU)
 
-**Unified Evaluation**: A unified evaluation interface for code generation tasks, including stdio and function call evaluation modes on various languages
+</details>
+
+</br>
+
+**Unified Evaluation**: A unified evaluation interface for code generation tasks.
 
 - [common_evaluate_batch](#calling-the-sandbox)
 
@@ -92,20 +85,18 @@ Supported languages:
 
 **Docker**
 
-Use the provided docker `zhengxin1999/icip-sandbox:v1` 
+Use the provided docker image:
+- x86 platform: `quay.io/jszheng/scalebox:x86-20260331` 
+- arm64 platform: `quay.io/jszheng/scalebox:arm64-20260331` 
 
-Or, build the image locally:
-
-```bash
-docker build --rm -f ./scripts/Dockerfile.v2 -t code_sandbox:server .
-```
-
-For **ARM64** environment, you can use the image `crpi-x4j7ugz3dc0rfat9.cn-beijing.personal.cr.aliyuncs.com/zhuqiming/ascend910b:code_sandbox`
-
-Or, build the image locally:
+Or, build the docker image locally:
 
 ```bash
-docker build --rm -f ./scripts/Dockerfile.arm64 -t code_sandbox:server .
+# x86 platform
+docker build --rm -f ./scripts/Dockerfile.x86 -t scalebox:v1 .
+
+# arm64 platform
+docker build --rm -f ./scripts/Dockerfile.arm64 -t scalebox:v1 .
 ```
 
 ### 🌐 Deployment
@@ -113,12 +104,11 @@ docker build --rm -f ./scripts/Dockerfile.arm64 -t code_sandbox:server .
 #### 🔧 Environment Variables
 Before deployment, configure the following environment variables:
 ```bash
-# Server configuration
 export HOST=0.0.0.0           # Server host address
 export PORT=8080              # Server port
-export WORKERS=32              # Number of parallel workers for uvicorn (set 1 for single CPU)
-export MAX_MEM=50000000        # Maximum memory limit per process in KB (50GB), or 'unlimited'
-export SAVE_BAD_CASES=false  # Set 'true' to save bad cases for debugging in 'output/{datetime}/'
+export WORKERS=32             # Number of parallel workers for uvicorn (set 1 for single CPU)
+export MAX_MEM=50000000       # Maximum memory limit per process in KB (50GB), or 'unlimited'
+export SAVE_BAD_CASES=false   # Set 'true' to save bad cases for debugging in 'output/{datetime}/'
 ```
 
 #### 💻 Single-Node Deployment
@@ -140,11 +130,11 @@ export NGINX_PORT=8081              # nginx will run on this port
 bash deploy/start_distributed.sh
 ```
 
-#### 📈 Scaling the Distributed Setup
-- To add or remove worker nodes:
-  1. Start/stop the worker nodes using the worker node setup instructions above
-  2. Re-run `bash deploy/start_distributed_nginx.sh` on the main node
-  - The nginx configuration will automatically update to include all available worker nodes
+#### 🔄 Hot-Update the Distributed Setup
+To dynamically add or remove worker nodes with hot updates (without full service restart):
+
+1. Start/stop worker nodes using the worker node setup instructions above.
+2. Re-run `bash deploy/start_distributed_nginx.sh` on the main node to trigger a dynamic hot-update. The nginx upstream configuration is refreshed in place and will automatically include all currently available worker nodes.
 
 #### 🐳 Docker Deployment
 To run the sandbox server using Docker with health check and automatic restart on failure:
@@ -154,19 +144,21 @@ docker run \
     --privileged \
     -p 8080:8080 \
     -p 8081:8081 \
-    --volume ~/icip-sandbox:/icip-sandbox \
-    -w /icip-sandbox \
-    --health-cmd='python /icip-sandbox/deploy/a_plus_b.py || exit 1' \
+    --volume ~/scalebox:/scalebox \
+    -w /scalebox \
+    --health-cmd='python /scalebox/deploy/a_plus_b.py || exit 1' \
     --health-interval=2s \
     -itd \
     --restart unless-stopped \
-    zhengxin1999/icip-sandbox:v1 \
+    quay.io/jszheng/scalebox:x86-20260331 \
     make run-online
 ```
 
 ### 🔌 Calling the sandbox
 In addition to the originally provided dataset-specific evaluation APIs, we also provide a unified evaluation API, which includes both stdio and function call evaluation modes on various languages.
-The description of API parameters are as follows:
+
+<details>
+<summary>The description of API parameters are as follows:</summary>
 
 - completion: The code to be evaluated, in the form of markdown code block.
 - config: The configuration for the evaluation
@@ -184,7 +176,11 @@ The description of API parameters are as follows:
     - run_all_cases: Whether to run all test cases if one test case failed.
     - total_timeout: After which the unit tests will not be executed, while the already running unit tests will continue to run until `run_timeout` is reached. Default to 300.
 
-Here is an example of how to use the `common_evaluate_batch` API for testing a+b problem with standard input/output format.
+</details>
+
+#### Uasge Example
+
+Here is an example of how to use the `common_evaluate_batch` API for testing a+b problem with standard stdin-stdout format.
 ```python
 # stdio evaluate
 payload = {
@@ -362,6 +358,11 @@ result = response.json()
 
 </details>
 
+#### Other Usage Examples
+
+<details>
+<summary>Special Judge Evaluation Examples:</summary>
+
 Here is an example of stdin-stdout special judge evaluation. Given the input number `c`, the output number `a` and `b` should satisfy `a + b == c`. 
 The special judge program should read the file path of `stdin.txt`, `stdout.txt` and `answer.txt` to get the input, output and answer, and return exit code 0 if the output is correct, otherwise return exit code 1.
 
@@ -389,6 +390,7 @@ result = response.json()
 
 <details>
 <summary>Response</summary>
+
 ```json
 {
   "id": 0,
@@ -452,7 +454,14 @@ result = response.json()
   "extra": null
 }
 ```
+
 </details>
+
+</details>
+
+
+<details>
+<summary>MultiPL-E Evaluation Examples:</summary>
 
 
 An example of assert evaluation from MultiPL-E cpp:
@@ -522,6 +531,15 @@ result = response.json()
 
 </details>
 
+
+</details>
+
+
+
+<details>
+<summary>HumanEval Evaluation Examples:</summary>
+
+
 An example of assert evaluation from HumanEval:
 ```python
 # function evaluate batch
@@ -578,6 +596,8 @@ result = response.json()
     "extra": null
 }
 ```
+
+</details>
 
 </details>
 
@@ -638,7 +658,7 @@ Then, add the following to your MCP client:
 }
 ```
 
-## ✏️ Unified Evaluation
+## 📊 Unified Evaluation
 
 An evaluation framework that uses the sandbox within this codebase for assessment.
 
@@ -664,7 +684,7 @@ cd eval
 # Option 1: Ray-based multi-GPU inference
 python3 sandbox.py --dataset_config <path/to/config.json>
 
-# Option 2: vLLM server mode
+# Option 2: vLLM server-based multi-GPU inference
 python3 sandbox.py --dataset_config <path/to/config.json> --use_vllm_server
 
 # Option 3: OpenAI-compatible API inference
@@ -675,7 +695,7 @@ python3 sandbox.py --dataset_config <path/to/config.json> \
     --rpm <requests_per_minute>
 ```
 - Option 1 uses Ray-based multi-GPU inference.
-- Option 2 first deploys the model across multiple GPUs with multiple vLLM servers, then performs concurrent inference via multiple API endpoints.
+- Option 2 first deploys the model across multi-GPU with multiple vLLM servers, then performs concurrent inference via multiple API endpoints.
 - Option 3 sends requests to an external OpenAI-compatible API endpoint (`--rpm` is optional; use `0` to disable rate limiting).
 
 <details>
@@ -699,17 +719,17 @@ python3 sandbox.py --dataset_config <path/to/config.json> \
 
 ### 📊 Evaluation results
 
-|  | humaneval | humaneval+ | mbpp | mbpp+ | livecodebench | aethercode |
-|-------|-----------|------------|------|-------|---------------|------------|
-| llama3-8b-ins | 60.98 | 57.93 | 62.76 | 54.76 | 10.48 | 00.20 |
-| llama3.1-8b-ins | 70.73 | 65.24 | 66.74 | 57.67 | 6.18 | 00.20 |
-| qwen2.5-1.5b-distill | 47.56 | 44.51 | 40.28 | 37.30 | 16.13 | 00.07 |
-| qwen3-4b | 89.63 | 85.37 | 82.67 | 73.81 | 53.92 | 8.07 |
-| qwen3-8b | 88.41 | 80.48 | 85.95 | 73.28 | 60.09 | 9.18 |
+| Model | HumanEval | MBPP | HumanEval+ | MBPP+ | LiveCodeBench | AetherCode |
+|-------|-----------|------|------------|-------|---------------|------------|
+| Llama-3-8B-Instruct | 60.98 | 62.76 | 57.93 | 54.76 | 10.48 | 0.20 |
+| Llama-3.1-8B-Instruct | 70.73 | 66.74 | 65.24 | 57.67 | 6.18 | 0.20 |
+| DeepSeek-R1-Distill-Qwen-1.5B | 47.56 | 40.28 | 44.51 | 37.30 | 16.13 | 0.07 |
+| Qwen3-4B | 89.63 | 82.67 | 85.37 | 73.81 | 53.92 | 8.07 |
+| Qwen3-8B | 88.41 | 85.95 | 80.48 | 73.28 | 60.09 | 9.18 |
 
 To reproduce the results in the table, reuse the config files under `eval/config/<model>` and run with `--use_vllm_server` enabled.
 
-## 🧪 Special Judge Generation
+## 🧾 Special Judge Generation
 
 Some programming problems require a “special judge” (custom checker) instead of exact-match outputs. This repo provides a lightweight pipeline to:
 
@@ -755,7 +775,7 @@ python3 special_judge/generate_judge_program.py \
     --run_timeout 30
 ```
 
-Notes
+Notes:
 - The classifier and generator stream LLM outputs and include simple retry/backoff for rate limits/timeouts.
 - Generated judge programs follow the stdin/stdout/answer interface required by the sandbox’s special judge mode.
 
@@ -848,9 +868,9 @@ Address [IP4]:[PORT4] is working
 
 ## 📝 Citation
 ```bibtex
-@software{icip_cas_sandbox_2025,
-  title = {icip-sandbox},
-  url = {https://github.com/icip-cas/icip-sandbox},
+@software{scalebox_2025,
+  title = {scalebox},
+  url = {https://github.com/icip-cas/scalebox},
   year = {2025}
 }
 ```

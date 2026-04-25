@@ -15,6 +15,7 @@
 import os
 import re
 import tempfile
+import platform
 from typing import Optional
 
 from sandbox.runners.base import restore_files, run_commands
@@ -57,12 +58,24 @@ async def run_perl(args: CodeRunArgs) -> CodeRunResult:
 
 
 async def run_d_ut(args: CodeRunArgs) -> CodeRunResult:
+    # Detect system architecture
+    arch = platform.machine().lower()
+    
     with tempfile.TemporaryDirectory(dir=get_tmp_dir(), ignore_cleanup_errors=True) as tmp_dir:
         restore_files(tmp_dir, args.files)
         with tempfile.NamedTemporaryFile(mode='w', dir=tmp_dir, suffix='.d', delete=False) as f:
             f.write(args.code)
+        
+        # Determine compiler and command based on architecture
+        if arch in ['aarch64', 'arm64']:
+            compiler = "ldc2"
+            # main is added to generate a dummy main() if the user only provided unittests
+            compile_cmd = f'{compiler} {f.name} -unittest -main -of=test'
+        else:
+            compiler = "dmd"
+            compile_cmd = f'{compiler} {f.name} -unittest -of=test'
 
-        return await run_commands(f'dmd {f.name} -unittest -of=test', './test', tmp_dir, {}, args)
+        return await run_commands(compile_cmd, './test', tmp_dir, {}, args)
 
 
 async def run_ruby(args: CodeRunArgs) -> CodeRunResult:
