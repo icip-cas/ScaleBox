@@ -1,5 +1,5 @@
 """
-MultiAPIRunner - dynamic load-balanced sampling with multiple API endpoints
+MultiAPIRunner - dynamic load-balanced sampling with multiple server endpoints
 
 Features:
 1. Repeat each prompt n_sample times as independent tasks
@@ -10,11 +10,8 @@ Features:
 
 import asyncio
 import json
-from typing import List, Callable, Optional, Dict, Any, Tuple
-from abc import ABC
-import threading
+from typing import List, Callable, Optional, Dict
 from concurrent.futures import ThreadPoolExecutor
-from tqdm.asyncio import tqdm as async_tqdm
 from tqdm import tqdm
 import traceback
 import random
@@ -26,9 +23,9 @@ try:
 except Exception:
     AutoTokenizer = None
 
-class MultiAPIRunner(ABC):
+class MultiAPIRunner:
     """
-    Dynamic load-balanced sampling runner for multiple API endpoints.
+    Dynamic load-balanced sampling runner for multiple server endpoints.
     
     Workflow:
     1. Expand prompts: each prompt is repeated n_sample times with (orig_idx, sample_idx)
@@ -55,7 +52,6 @@ class MultiAPIRunner(ABC):
         args,
         model: str,
         api_endpoints: List[str],
-        api_key: str = "EMPTY",
         debug: bool = True,  # Whether to enable debug logs
     ):
         """
@@ -63,15 +59,11 @@ class MultiAPIRunner(ABC):
         
         Args:
             args: Object with sampling params (n_sample, temperature, top_p, batch_size, etc.)
-            model: Model name (used for API calls)
-            api_endpoints: API endpoint list (e.g. ["http://localhost:8000/v1", ...])
-            api_key: API key
+            model: Model name used by the sampling service
+            api_endpoints: Server endpoint list (e.g. ["http://localhost:8000/v1", ...])
             debug: Whether to enable debug logs
         """
         self.args = args
-        self.model = model
-        self.api_endpoints = api_endpoints
-        self.api_key = api_key
         self.batch_size = getattr(args, 'batch_size', 16) or 16  # Use batch_size as max concurrency per server
         self.timeout = getattr(args, 'timeout', 60000)
         self.debug = debug  # Debug switch
@@ -95,11 +87,14 @@ class MultiAPIRunner(ABC):
         else:
             self.stop_tokens = []
         
-        # Create client pool (aligned with the reference logic)
+        # Create client pool for local server endpoints
         # Use AsyncOpenAI async clients
         self.client_pool = []
         self.api_bases = []  # Keep normalized base_url values for logging
         api_bases = api_endpoints if isinstance(api_endpoints, list) else [api_endpoints]
+        api_bases = [base_url for base_url in api_bases if base_url]
+        if not api_bases:
+            raise ValueError("`api_endpoints` must not be empty.")
         for base_url in api_bases:
             # Ensure base_url format is correct
             if not base_url.endswith('/v1'):
@@ -111,17 +106,13 @@ class MultiAPIRunner(ABC):
             self.api_bases.append(base_url)
             self.client_pool.append(openai.AsyncOpenAI(
                 base_url=base_url,
-                api_key=api_key,
+                api_key="EMPTY",
                 timeout=self.timeout
             ))
         
-        print(f"[MultiAPIRunner] ========== Initialization complete ==========")
-        print(f"[MultiAPIRunner] Created {len(self.client_pool)} AsyncOpenAI clients:")
+        print(f"[MultiAPIRunner] Initialized {len(self.client_pool)} clients | debug={self.debug} | concurrency/client={self.batch_size}")
         for i, ep in enumerate(self.api_bases):
-            print(f"  [Client {i}] {ep} (max concurrency: {self.batch_size})")
-        print(f"[MultiAPIRunner] Debug mode: {'ON' if self.debug else 'OFF'}")
-        print(f"[MultiAPIRunner] Sampling strategy: asynchronous dynamic load balancing")
-        print(f"[MultiAPIRunner] ================================")
+            print(f"  [Client {i}] {ep}")
     
     def _get_tokenizer(self):
         if self._tokenizer is not None or AutoTokenizer is None:
@@ -212,6 +203,9 @@ class MultiAPIRunner(ABC):
 
         print(f"[MultiAPIRunner] API call error - {title}:\n{json.dumps(meta, ensure_ascii=False, indent=2)}")
 
+    def _resolve_stop_tokens(self, stop_tokens=None):
+        return self.stop_tokens if stop_tokens is None else stop_tokens
+
     async def get_openai_response(
         self,
         client: openai.AsyncOpenAI,
@@ -222,6 +216,7 @@ class MultiAPIRunner(ABC):
         top_p: float = 0.95,
         n: int = 1,
         stream: bool = False,
+        stop_tokens=None,
     ) -> str:
         """
         Call the API asynchronously with an AsyncOpenAI client (aligned with the reference logic).
@@ -259,8 +254,9 @@ class MultiAPIRunner(ABC):
             kwargs["top_p"] = top_p
             
             # Add stop tokens
-            if self.stop_tokens:
-                kwargs["stop"] = self.stop_tokens
+            resolved_stop_tokens = self._resolve_stop_tokens(stop_tokens)
+            if resolved_stop_tokens:
+                kwargs["stop"] = resolved_stop_tokens
             
             # Pass non-standard OpenAI params through extra_body (e.g. top_k, min_p supported by vLLM)
             extra_body = {}
@@ -289,6 +285,7 @@ class MultiAPIRunner(ABC):
         self, 
         prompt: str, 
         client: openai.AsyncOpenAI,
+        stop_tokens=None,
     ) -> str:
         """
         Call the API once asynchronously with the specified client.
@@ -307,6 +304,7 @@ class MultiAPIRunner(ABC):
             top_p=self.args.top_p,
             n=1,
             stream=False,
+            stop_tokens=stop_tokens,
         )
         
         return res
@@ -314,7 +312,8 @@ class MultiAPIRunner(ABC):
     async def _run_batch_async(
         self, 
         prompts: List[str], 
-        save_callback: Optional[Callable] = None
+        save_callback: Optional[Callable] = None,
+        stop_tokens_by_prompt: Optional[List] = None,
     ) -> List[List[str]]:
         """
         Batched async sampling with dynamic load balancing.
@@ -329,21 +328,30 @@ class MultiAPIRunner(ABC):
         num_prompts = len(prompts)
         total_tasks = num_prompts * n_sample
         
-        print(f"\n[MultiAPIRunner] ========== Start batch sampling ==========")
-        print(f"[MultiAPIRunner] Prompt count: {num_prompts}")
-        print(f"[MultiAPIRunner] Samples per prompt: {n_sample}")
-        print(f"[MultiAPIRunner] Total tasks: {total_tasks}")
-        print(f"[MultiAPIRunner] Client count: {len(self.client_pool)}")
-        print(f"[MultiAPIRunner] Max concurrency per client: {self.batch_size}")
-        print(f"[MultiAPIRunner] Theoretical max concurrency: {len(self.client_pool) * self.batch_size}")
-        print(f"[MultiAPIRunner] =====================================\n")
+        print(
+            f"[MultiAPIRunner] Start batch | prompts={num_prompts} | "
+            f"n_sample={n_sample} | total_tasks={total_tasks} | "
+            f"clients={len(self.client_pool)} | concurrency/client={self.batch_size} | "
+            f"max_total={len(self.client_pool) * self.batch_size}"
+        )
         
+        if stop_tokens_by_prompt is not None and len(stop_tokens_by_prompt) != num_prompts:
+            raise RuntimeError(
+                f"Received {len(stop_tokens_by_prompt)} stop token entries, expected {num_prompts}."
+            )
+
         # 1. Expand prompts: repeat each prompt n_sample times
-        # Format: (orig_idx, sample_idx, prompt)
-        task_list = []
-        for orig_idx, prompt in enumerate(prompts):
-            for sample_idx in range(n_sample):
-                task_list.append((orig_idx, sample_idx, prompt))
+        # Format: (orig_idx, sample_idx, prompt, stop_tokens)
+        task_list = [
+            (
+                orig_idx,
+                sample_idx,
+                prompt,
+                stop_tokens_by_prompt[orig_idx] if stop_tokens_by_prompt is not None else None,
+            )
+            for orig_idx, prompt in enumerate(prompts)
+            for sample_idx in range(n_sample)
+        ]
 
         # Shuffle task order to distribute easy/hard tasks more evenly
         random.shuffle(task_list)
@@ -384,7 +392,7 @@ class MultiAPIRunner(ABC):
             
             self._debug_log(f"[Worker {endpoint_idx}] Started, endpoint: {self.api_bases[endpoint_idx]}")
             
-            async def process_single_task(orig_idx: int, sample_idx: int, prompt: str):
+            async def process_single_task(orig_idx: int, sample_idx: int, prompt: str, stop_tokens):
                 """Process a single sampling task."""
                 task_id = f"prompt_{orig_idx}_sample_{sample_idx}"
                 
@@ -404,7 +412,7 @@ class MultiAPIRunner(ABC):
                 
                 try:
                     # Call API with this worker's dedicated client
-                    sample = await self._call_api_single(prompt, client)
+                    sample = await self._call_api_single(prompt, client, stop_tokens=stop_tokens)
                     
                     # Store result
                     async with results_lock:
@@ -453,9 +461,9 @@ class MultiAPIRunner(ABC):
                 tasks_fetched = 0
                 for _ in range(slots_available):
                     try:
-                        orig_idx, sample_idx, prompt = task_queue.get_nowait()
+                        orig_idx, sample_idx, prompt, stop_tokens = task_queue.get_nowait()
                         task = asyncio.create_task(
-                            process_single_task(orig_idx, sample_idx, prompt)
+                            process_single_task(orig_idx, sample_idx, prompt, stop_tokens)
                         )
                         active_tasks.add(task)
                         tasks_fetched += 1
@@ -474,14 +482,13 @@ class MultiAPIRunner(ABC):
                     break
                 
                 # Wait until any active task completes
-                done, active_tasks = await asyncio.wait(
+                _, active_tasks = await asyncio.wait(
                     active_tasks, 
                     return_when=asyncio.FIRST_COMPLETED
                 )
                 # Tasks in done are finished; active_tasks now contains pending tasks
         
         # 7. Create workers for all endpoints, each with its corresponding client
-        print(f"[MultiAPIRunner] Starting {len(self.client_pool)} workers...")
         workers = [
             endpoint_worker(i, client) 
             for i, client in enumerate(self.client_pool)
@@ -493,22 +500,24 @@ class MultiAPIRunner(ABC):
         pbar.close()
         
         # 8. Print summary stats
-        print(f"\n[MultiAPIRunner] ========== Sampling summary ==========")
-        print(f"[MultiAPIRunner] Total tasks: {total_tasks}")
-        print(f"[MultiAPIRunner] Per-client stats:")
         total_completed = 0
         total_failed = 0
+        summary_lines = []
         for i in range(len(self.client_pool)):
             completed = endpoint_stats[i]['completed']
             failed = endpoint_stats[i]['failed']
             total_completed += completed
             total_failed += failed
             percentage = (completed / total_tasks * 100) if total_tasks > 0 else 0
-            print(f"  [Client {i}] {self.api_bases[i]}")
-            print(f"           completed: {completed} ({percentage:.1f}%) | failed: {failed}")
-        print(f"[MultiAPIRunner] Total completed: {total_completed} | total failed: {total_failed}")
-        print(f"[MultiAPIRunner] =====================================\n")
-        
+            summary_lines.append(
+                f"  [Client {i}] {self.api_bases[i]} | completed={completed} ({percentage:.1f}%) | failed={failed}"
+            )
+        print(
+            f"[MultiAPIRunner] Sampling summary | total_tasks={total_tasks} | "
+            f"completed={total_completed} | failed={total_failed}"
+        )
+        for line in summary_lines:
+            print(line)
         # 9. Convert result format: Dict[int, Dict[int, str]] -> List[List[str]]
         final_results: List[List[str]] = []
         for orig_idx in range(num_prompts):
@@ -517,20 +526,35 @@ class MultiAPIRunner(ABC):
                 sample = results[orig_idx].get(sample_idx, "")
                 samples.append(sample)
             final_results.append(samples)
-            
+
             # Call callback
             if save_callback:
                 save_callback(orig_idx, samples)
-        
+
+        if len(final_results) != num_prompts:
+            raise RuntimeError(
+                f"MultiAPIRunner returned {len(final_results)} prompt results, expected {num_prompts}."
+            )
+        for orig_idx, samples in enumerate(final_results):
+            if not isinstance(samples, list):
+                raise RuntimeError(
+                    f"MultiAPIRunner result at index {orig_idx} must be a list, got {type(samples).__name__}."
+                )
+            if not all(isinstance(sample, str) for sample in samples):
+                raise RuntimeError(
+                    f"MultiAPIRunner samples at index {orig_idx} must all be strings."
+                )
+
         return final_results
 
     def run_batch(
         self, 
         prompts: List[str], 
+        stop_tokens_by_prompt: Optional[List] = None,
         save_callback: Optional[Callable] = None
     ) -> List[List[str]]:
         """
-        Run batched inference with output format aligned to VLLMRunner.
+        Run batched inference with output format aligned to VLLMRay.
         
         Args:
             prompts: Prompt list
@@ -543,7 +567,9 @@ class MultiAPIRunner(ABC):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
-                return loop.run_until_complete(self._run_batch_async(prompts, save_callback))
+                return loop.run_until_complete(
+                    self._run_batch_async(prompts, save_callback, stop_tokens_by_prompt)
+                )
             finally:
                 loop.close()
 
@@ -564,13 +590,12 @@ class MultiAPIRunnerWithRetry(MultiAPIRunner):
         args,
         model: str,
         api_endpoints: List[str],
-        api_key: str = "EMPTY",
         max_retries: int = 3,
         retry_delay: float = 1.0,
         debug: bool = True,
     ):
         super().__init__(
-            args, model, api_endpoints, api_key, debug
+            args, model, api_endpoints, debug
         )
         self.max_retries = max_retries
         self.retry_delay = retry_delay
@@ -579,6 +604,7 @@ class MultiAPIRunnerWithRetry(MultiAPIRunner):
         self, 
         prompt: str, 
         client: openai.AsyncOpenAI,
+        stop_tokens=None,
     ) -> str:
         """Call API with retry support."""
         for attempt in range(self.max_retries):

@@ -1,0 +1,224 @@
+# ==============================
+# 单 benchmark 评测完整 YAML 配置模板
+# ==============================
+# 说明：
+# 1. 这是当前代码支持的“完整参数示例”。
+# 2. CLI 和 config 同时传同一个参数时：普通参数会优先使用 CLI；
+#    但像 --sample_only / --eval_only / --use_server / --use_ray / --resume_sample / --thinking
+#    这类布尔开关，当前请直接在 config 里设定，CLI 不会覆盖。
+# 3. benchmark 必填，目前支持：
+#    - mbpp
+#    - mbppplus
+#    - humaneval
+#    - humanevalplus
+#    - livecodebench
+#    - aethercode
+#    - multipl_e
+# 4. benchmark_data_path 的要求：
+#    - livecodebench / aethercode：必须是目录
+#    - 其他 benchmark：必须是 JSONL 文件
+
+# ------------------------------
+# 运行模式
+# ------------------------------
+
+# 只采样，不评测。
+# sample_only 和 eval_only 不能同时为 true。
+sample_only: false
+
+# 只评测已有 response，不做采样。
+# eval_only=true 时必须提供 eval_path。
+eval_only: false
+
+# 是否从已有 samples.jsonl 继续补采。
+# 不能和 eval_only 同时使用。
+resume_sample: false
+
+# 断点续采时使用的 samples.jsonl 路径。
+# 仅当 resume_sample=true 时必填。
+resume_sample_path: null
+
+# 是否使用本地 vLLM server 方式采样。
+# use_server 和 use_ray 必须二选一；eval_only 时两者都不需要。
+use_server: true
+
+# 是否使用 ray + 本地 vLLM 并行采样。
+# use_server 和 use_ray 必须二选一；eval_only 时两者都不需要。
+use_ray: false
+
+# ------------------------------
+# benchmark 输入数据
+# ------------------------------
+
+# 评测基准名称，必填。
+benchmark: "mbpp"
+
+# benchmark 原始数据路径，必填。
+benchmark_data_path: "/path/to/mbpp.jsonl"
+
+# 仅在 eval_only=true 时使用。
+# 该文件必须是 JSONL，且每行至少包含：id / prompt / response
+# 如果不是 eval_only，请保持为 null。
+eval_path: null
+
+# ------------------------------
+# benchmark 专属参数
+# ------------------------------
+
+# livecodebench 必填：数据版本，例如 v1 / v2 / v3 / v4 / v5
+# aethercode 也必填：数据版本字符串
+# 其他 benchmark 可设为 null。
+version: null
+
+# livecodebench 可选：起始日期过滤，格式 YYYY-MM-DD。
+# 仅对 livecodebench 生效。
+begin_date: null
+
+# livecodebench 可选：结束日期过滤，格式 YYYY-MM-DD。
+# 仅对 livecodebench 生效。
+end_date: null
+
+# aethercode 必填：special judge 程序文件路径。
+# 非 aethercode 时可设为 null。
+special_judge_file: null
+
+# 可选：显式指定评测语言。
+# 一般不需要填写，代码会按 benchmark 自动推断：
+# - humaneval / mbpp / livecodebench：python
+# - aethercode：cpp
+# - multipl_e：按样本自身 language
+language: null
+
+# ------------------------------
+# 模型与服务配置
+# ------------------------------
+
+# 模型路径。
+# - use_server=true 时：必填
+# - use_ray=true 时：必填
+# - eval_only=true 时：可不填
+model_path: "meta-llama/Llama-3.1-8B-Instruct"
+
+# 采样服务中使用的模型名。
+# - use_server 模式下会作为 OpenAI-compatible server 的 model 名
+# - 一般可写成你希望暴露给客户端的名字
+model_name: "Llama-3.1-8B-Instruct"
+
+# 当前机器可用于推理的 GPU/NPU 总数。
+num_gpus_total: 8
+
+# 每个模型实例使用的 GPU/NPU 数。
+# 例如单机 8 卡、每个模型占 2 卡，则可同时起 4 个实例。
+num_gpus_per_model: 1
+
+# 是否使用 NPU 而不是 GPU。
+npu: false
+
+# GPU/NPU 显存占用比例。
+mem_fraction: 0.9
+
+# vLLM server 的起始端口。
+# use_server=true 时使用。
+vllm_server_base_port: 8000
+
+# vLLM server 的监听地址。
+vllm_server_host: "0.0.0.0"
+
+# vLLM server 的 dtype，例如 auto / float16 / bfloat16。
+vllm_server_dtype: "auto"
+
+# 等待 vLLM server 启动就绪的超时时间，单位秒。
+vllm_server_wait_timeout: 600
+
+# vLLM 最大上下文长度。
+# 设为 null 表示使用模型默认值。
+max_model_len: null
+
+# 模型批大小。
+# - use_ray 时会直接用于批推理
+# - use_server 时主要影响每个 server 的并发控制
+batch_size: 0
+
+# ------------------------------
+# Prompt 与采样参数
+# ------------------------------
+
+# Prompt 模版类型。
+# 当前主要支持：
+# - qwen2.5-instruct
+# - qwen2.5-distill
+# - qwen3
+# - llama3
+# - llama3-instruct
+prompt_type: "llama3-instruct"
+
+# 是否启用 thinking 模式。
+# 当前代码里只有 prompt_type=qwen3 时允许设为 true。
+thinking: false
+
+# 采样温度。
+temperature: 0
+
+# Top-p 采样参数。
+top_p: 0.8
+
+# Top-k 采样参数。
+top_k: 0
+
+# Min-p 采样参数。
+min_p: 0
+
+# 单次生成的最大 token 数。
+max_completion_tokens: 8192
+
+# 每条样本生成几次。
+# 如果 n_sample > 1，结果文件中会按同一个 id 重复多行保存。
+n_sample: 1
+
+# 停止词。
+# 默认可设为 null，此时程序会自动使用当前 prompt_type 对应模版里的 stop_str。
+# 只有在你想手动覆盖默认停止词时，才需要显式填写。
+# 例如：
+# - qwen2.5-instruct / qwen3 默认是 <|im_end|>
+# - qwen2.5-distill 默认是 <｜end▁of▁sentence｜>
+# - llama3 / llama3-instruct 默认是 <|eot_id|>
+# 额外说明：
+# - multipl_e 的输入样本如果自带 test.stop_tokens，采样时会优先使用样本里的 stop_tokens，
+#   而不是这里的全局 stop_token。
+stop_token: null
+
+# ------------------------------
+# Sandbox 评测参数
+# ------------------------------
+
+# ScaleBox sandbox 服务地址。
+# 当需要执行评测（即非 sample_only）时会先检查该接口是否可用。
+endpoint: "http://<ip:port>/common_evaluate_batch"
+
+# 单个 case 的运行超时，单位秒。
+run_timeout: 10
+
+# 编译超时，单位秒。
+compile_timeout: 10
+
+# sandbox 总超时，单位秒。
+total_timeout: 300
+
+# 是否要求 sandbox 一次跑完所有测试用例。
+# - true: results.jsonl 里的 scalebox 会保存精确测试通过率（0~1）
+# - false: scalebox 会退化为 0/1 分数（通过为 1.0，失败为 0.0）
+run_all_cases: false
+
+# sandbox 额外参数。
+# 会原样透传到 config.extra。
+# 如果没有额外需求，可以保留为空字典。
+extra: {}
+
+# ------------------------------
+# 输出
+# ------------------------------
+
+# 输出根目录。
+# 程序运行时会自动在该目录下创建一个时间戳子目录，
+# 然后把 samples.jsonl / results.jsonl / accuracy.json 写到其中。
+output_dir: "res/Llama-3.1-8B-Instruct/mbpp"
