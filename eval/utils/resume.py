@@ -2,6 +2,20 @@ import json
 import os
 
 
+def validate_unique_case_ids(cases):
+    seen_ids = set()
+    duplicate_ids = []
+    for case in cases:
+        case_id = case["id"]
+        if case_id in seen_ids and case_id not in duplicate_ids:
+            duplicate_ids.append(case_id)
+        seen_ids.add(case_id)
+
+    if duplicate_ids:
+        duplicate_ids_str = ", ".join(str(case_id) for case_id in duplicate_ids[:10])
+        raise ValueError(f"Duplicate case ids are not supported: {duplicate_ids_str}")
+
+
 def load_sample_results(sample_path):
     sampled_by_id = {}
     if not os.path.exists(sample_path):
@@ -12,7 +26,19 @@ def load_sample_results(sample_path):
             line = line.strip()
             if not line:
                 continue
-            sample_case = json.loads(line)
+            try:
+                sample_case = json.loads(line)
+            except json.JSONDecodeError as error:
+                has_remaining_non_empty = any(remaining_line.strip() for remaining_line in file)
+                if not has_remaining_non_empty:
+                    print(
+                        f"[resume] Ignoring incomplete trailing line in {sample_path} "
+                        f"at line {line_number}: {error}"
+                    )
+                    break
+                raise ValueError(
+                    f"Invalid JSON in sample resume file at line {line_number}: {error}"
+                ) from error
             if "id" not in sample_case:
                 raise ValueError(f"Missing `id` in sample resume file at line {line_number}")
             if "response" not in sample_case:
@@ -34,10 +60,12 @@ def append_sample_results(sample_path, case_id, prompt, samples):
                 "response": sample if isinstance(sample, str) else str(sample),
             }
             file.write(json.dumps(output_case, ensure_ascii=False) + "\n")
+        file.flush()
 
 
 
 def build_sampled_cases_from_sample_results(cases, sampled_by_id, n_sample):
+    validate_unique_case_ids(cases)
     sampled_cases = []
     for case in cases:
         responses = sampled_by_id.get(case["id"], [])[:n_sample]
@@ -67,13 +95,14 @@ def sample_cases_with_resume(
     sample_cases_fn,
     write_sample_results_fn,
 ):
+    validate_unique_case_ids(cases)
     sampled_by_id = load_sample_results(resume_sample_path)
     existing_sampled_cases = build_sampled_cases_from_sample_results(cases, sampled_by_id, args.n_sample)
     write_sample_results_fn(samples_path, existing_sampled_cases)
 
     pending_groups = {}
     for case in cases:
-        existing_count = len(sampled_by_id.get(case["id"], []))
+        existing_count = min(len(sampled_by_id.get(case["id"], [])), args.n_sample)
         remaining_count = max(0, args.n_sample - existing_count)
         if remaining_count > 0:
             pending_groups.setdefault(remaining_count, []).append(case)

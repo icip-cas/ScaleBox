@@ -5,6 +5,11 @@ import sys
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+try:
+    import pyarrow.parquet as pq
+except ImportError:
+    pq = None
+
 from huggingface_hub import HfApi, hf_hub_download
 
 
@@ -80,10 +85,8 @@ def download_parquet(remote_path: str, cache_dir: Path, endpoint: str) -> Path:
 
 
 def load_parquet_rows(parquet_path: Path) -> list[dict]:
-    try:
-        import pyarrow.parquet as pq
-    except ImportError as exc:
-        raise RuntimeError("pyarrow is required to read the downloaded parquet file.") from exc
+    if pq is None:
+        raise RuntimeError("pyarrow is required to read the downloaded parquet file.")
 
     rows = pq.read_table(parquet_path).to_pylist()
     if not isinstance(rows, list):

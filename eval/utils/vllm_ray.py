@@ -93,7 +93,14 @@ class VLLMRay(ABC):
         return SamplingParams(**{**sampling_params_kwargs, "stop": stop_tokens})
 
     @staticmethod
-    def _generate_grouped(model, prompts, stop_tokens_by_prompt, sampling_params_kwargs, batch_size):
+    def _generate_grouped(
+        model,
+        prompts,
+        stop_tokens_by_prompt,
+        sampling_params_kwargs,
+        batch_size,
+        result_callback=None,
+    ):
         grouped_prompts = {}
         default_stop_tokens = sampling_params_kwargs["stop"]
 
@@ -117,18 +124,27 @@ class VLLMRay(ABC):
             )
             if batch_size == 0:
                 group_outputs = model.generate(group_prompts, sampling_params)
-            else:
-                group_outputs = []
-                for start in range(0, len(group_prompts), batch_size):
-                    group_outputs.extend(
-                        model.generate(group_prompts[start : start + batch_size], sampling_params)
+                if len(group_outputs) != len(group["items"]):
+                    raise RuntimeError(
+                        f"VLLMRay returned {len(group_outputs)} outputs, expected {len(group['items'])}."
                     )
-            if len(group_outputs) != len(group["items"]):
-                raise RuntimeError(
-                    f"VLLMRay returned {len(group_outputs)} outputs, expected {len(group['items'])}."
-                )
-            for (index, _), output in zip(group["items"], group_outputs):
-                outputs[index] = output
+                for (index, _), output in zip(group["items"], group_outputs):
+                    outputs[index] = output
+                    if result_callback is not None:
+                        result_callback(index, output)
+            else:
+                for start in range(0, len(group_prompts), batch_size):
+                    batch_prompts = group_prompts[start : start + batch_size]
+                    batch_items = group["items"][start : start + batch_size]
+                    batch_outputs = model.generate(batch_prompts, sampling_params)
+                    if len(batch_outputs) != len(batch_items):
+                        raise RuntimeError(
+                            f"VLLMRay returned {len(batch_outputs)} outputs, expected {len(batch_items)}."
+                        )
+                    for (index, _), output in zip(batch_items, batch_outputs):
+                        outputs[index] = output
+                        if result_callback is not None:
+                            result_callback(index, output)
         return outputs
 
     @staticmethod
@@ -191,37 +207,38 @@ class VLLMRay(ABC):
                 chunk_size = math.ceil(len(remaining_prompts) / num_processes)
                 ports, sockets = self.find_n_free_ports(num_processes)
 
-                gathered_responses = []
+                pending_refs = {}
                 for idx, start in enumerate(range(0, len(remaining_prompts), chunk_size)):
-                    gathered_responses.append(
-                        get_answers_func(
-                            self.model_tokenizer_path,
-                            self.num_gpus_per_model,
-                            ports[idx],
-                            remaining_prompts[start : start + chunk_size],
-                            self.sampling_params_kwargs,
-                            self.batch_size,
-                            None if remaining_stop_tokens is None else remaining_stop_tokens[start : start + chunk_size],
-                        )
+                    chunk_indices = remaining_indices[start : start + chunk_size]
+                    chunk_ref = get_answers_func(
+                        self.model_tokenizer_path,
+                        self.num_gpus_per_model,
+                        ports[idx],
+                        remaining_prompts[start : start + chunk_size],
+                        self.sampling_params_kwargs,
+                        self.batch_size,
+                        None if remaining_stop_tokens is None else remaining_stop_tokens[start : start + chunk_size],
                     )
+                    pending_refs[chunk_ref] = chunk_indices
 
                 for sock in sockets:
                     sock.close()
 
-                gathered_responses = ray.get(gathered_responses)
-                gathered_responses = [item for sublist in gathered_responses for item in sublist]
-
-                if len(gathered_responses) != len(remaining_indices):
-                    raise RuntimeError(
-                        f"VLLMRay returned {len(gathered_responses)} outputs, expected {len(remaining_indices)}."
-                    )
-
-                for index, vllm_output in zip(remaining_indices, gathered_responses):
-                    outputs[index] = [output.text for output in vllm_output.outputs]
-                    if save_callback:
-                        save_callback(index, outputs[index])
-                    if pbar is not None:
-                        pbar.update(1)
+                while pending_refs:
+                    ready_refs, _ = ray.wait(list(pending_refs.keys()), num_returns=1)
+                    ready_ref = ready_refs[0]
+                    chunk_indices = pending_refs.pop(ready_ref)
+                    chunk_outputs = ray.get(ready_ref)
+                    if len(chunk_outputs) != len(chunk_indices):
+                        raise RuntimeError(
+                            f"VLLMRay returned {len(chunk_outputs)} outputs, expected {len(chunk_indices)}."
+                        )
+                    for index, vllm_output in zip(chunk_indices, chunk_outputs):
+                        outputs[index] = [output.text for output in vllm_output.outputs]
+                        if save_callback:
+                            save_callback(index, outputs[index])
+                        if pbar is not None:
+                            pbar.update(1)
                 return outputs
 
             if remaining_prompts:
@@ -231,12 +248,21 @@ class VLLMRay(ABC):
                     tensor_parallel_size=self.num_gpus_per_model,
                     trust_remote_code=True,
                 )
+
+                def handle_local_output(index, vllm_output):
+                    outputs[index] = [output.text for output in vllm_output.outputs]
+                    if save_callback:
+                        save_callback(index, outputs[index])
+                    if pbar is not None:
+                        pbar.update(1)
+
                 vllm_outputs = self._generate_grouped(
                     llm,
                     remaining_prompts,
                     remaining_stop_tokens,
                     self.sampling_params_kwargs,
                     self.batch_size,
+                    result_callback=handle_local_output,
                 )
                 if len(vllm_outputs) != len(remaining_indices):
                     raise RuntimeError(
@@ -244,12 +270,7 @@ class VLLMRay(ABC):
                     )
                 for index, vllm_output in zip(remaining_indices, vllm_outputs):
                     outputs[index] = [output.text for output in vllm_output.outputs]
-                    if save_callback:
-                        save_callback(index, outputs[index])
-                    if pbar is not None:
-                        pbar.update(1)
             return outputs
         finally:
             if pbar is not None:
                 pbar.close()
-

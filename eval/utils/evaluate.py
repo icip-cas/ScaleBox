@@ -96,12 +96,15 @@ async def _evaluate_case(case, benchmark, sandbox_config, args, session):
     language = get_case_language(benchmark, case)
     completion = extract_completion(case["response"], language, args.thinking)
     if completion is None:
-        return 0.0
+        return {"score": 0.0, "raw_result": None}
     try:
         result = await get_sandbox_result(benchmark, case, completion, sandbox_config, args.endpoint, session)
     except Exception:
-        return 0.0
-    return summarize_sandbox_result(result, sandbox_config["extra"].get("run_all_cases", False))
+        return {"score": 0.0, "raw_result": None}
+    return {
+        "score": summarize_sandbox_result(result, sandbox_config["extra"].get("run_all_cases", False)),
+        "raw_result": result,
+    }
 
 
 async def evaluate_cases_async(cases, benchmark, sandbox_config, args):
@@ -133,5 +136,7 @@ async def evaluate_cases_async(cases, benchmark, sandbox_config, args):
 def evaluate_cases(cases, benchmark, sandbox_config, args):
     sandbox_results = asyncio.run(evaluate_cases_async(cases, benchmark, sandbox_config, args))
     for case, sandbox_result in zip(cases, sandbox_results):
-        case["scalebox"] = sandbox_result
+        case["scalebox_score"] = sandbox_result["score"]
+        case["scalebox_raw"] = sandbox_result["raw_result"]
+        case["scalebox"] = sandbox_result["raw_result"] if args.save_full_scalebox_result else sandbox_result["score"]
     return cases

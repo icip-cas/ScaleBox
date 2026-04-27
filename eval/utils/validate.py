@@ -12,14 +12,10 @@ def validate_mode_args(args):
         raise ValueError("`--sample_only` and `--eval_only` cannot be used together.")
 
     if args.eval_only:
-        if not args.benchmark_data_path:
-            raise ValueError("`--benchmark_data_path` is required when using `--eval_only`.")
         if not args.eval_path:
             raise ValueError("`--eval_path` is required when using `--eval_only`.")
         return
 
-    if not args.benchmark_data_path:
-        raise ValueError("`--benchmark_data_path` is required.")
     if args.eval_path:
         raise ValueError("`--eval_path` can only be used with `--eval_only`.")
 

@@ -38,6 +38,7 @@ def build_arg_parser():
     argparser.add_argument("--mem_fraction", type=float, default=0.9, help="GPU/NPU 显存占用比例 / GPU/NPU memory utilization fraction")
     argparser.add_argument("--resume_sample", action="store_true", default=False, help="从已有采样文件继续补采 / Resume sampling from an existing samples file")
     argparser.add_argument("--resume_sample_path", type=str, default=None, help="用于断点续采的 samples.jsonl 路径 / Path to the samples.jsonl file used for resume sampling")
+    argparser.add_argument("--save_full_scalebox_result", action="store_true", default=False, help="在 results.jsonl 中将 scalebox 保存为 ScaleBox 返回体完整内容；默认保存汇总分数 / Save the full ScaleBox response body in results.jsonl instead of the summarized score")
     return argparser
 
 

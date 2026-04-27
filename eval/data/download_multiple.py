@@ -5,7 +5,12 @@ import sys
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from huggingface_hub import hf_hub_download
+try:
+    import pyarrow.parquet as pq
+except ImportError:
+    pq = None
+
+from huggingface_hub import HfApi, hf_hub_download
 
 
 REPO_ID = "nuprl/MultiPL-E"
@@ -30,7 +35,7 @@ REQUIRED_FIELDS = {
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Download nuprl/MultiPL-E and rebuild MultiPL-E jsonl files."
+        description="Download all nuprl/MultiPL-E subsets and rebuild local jsonl files."
     )
     parser.add_argument(
         "--hf-endpoint",
@@ -56,12 +61,13 @@ def configure_hf_endpoint(hf_endpoint: str | None) -> str:
     return "https://huggingface.co"
 
 
-def discover_target_names(output_dir: Path) -> list[str]:
-    target_names = sorted(path.stem for path in output_dir.glob("*.jsonl"))
+def discover_target_names(endpoint: str) -> list[str]:
+    repo_files = HfApi(endpoint=endpoint).list_repo_files(REPO_ID, repo_type=REPO_TYPE)
+    suffix = f"/{PARQUET_FILENAME}"
+    target_names = sorted({path[: -len(suffix)] for path in repo_files if path.endswith(suffix)})
     if not target_names:
         raise RuntimeError(
-            f"No existing target jsonl files found under {output_dir}. "
-            "This script uses current filenames to determine which MultiPL-E subsets to rebuild."
+            f"No remote MultiPL-E subsets ending with {PARQUET_FILENAME!r} were found in {REPO_ID}."
         )
     return target_names
 
@@ -79,10 +85,8 @@ def download_parquet(target_name: str, cache_dir: Path, endpoint: str) -> Path:
 
 
 def load_parquet_rows(parquet_path: Path) -> list[dict]:
-    try:
-        import pyarrow.parquet as pq
-    except ImportError as exc:
-        raise RuntimeError("pyarrow is required to read MultiPL-E parquet files.") from exc
+    if pq is None:
+        raise RuntimeError("pyarrow is required to read MultiPL-E parquet files.")
 
     rows = pq.read_table(parquet_path).to_pylist()
     if not isinstance(rows, list):
@@ -171,7 +175,7 @@ def main() -> int:
     args = parse_args()
     _, cache_dir, output_dir = resolve_paths()
     endpoint = configure_hf_endpoint(args.hf_endpoint)
-    target_names = discover_target_names(output_dir)
+    target_names = discover_target_names(endpoint)
 
     print(f"[HF] endpoint: {endpoint}")
     print(f"[HF] repo: {REPO_ID}")
@@ -180,6 +184,7 @@ def main() -> int:
     print(f"[Plan] targets: {len(target_names)}")
 
     rebuilt_count = 0
+    total_rows = 0
     for target_name in target_names:
         parquet_path = download_parquet(target_name, cache_dir, endpoint)
         rows = load_parquet_rows(parquet_path)
@@ -187,10 +192,12 @@ def main() -> int:
         output_path = output_dir / f"{target_name}.jsonl"
         write_jsonl(rows, output_path)
         rebuilt_count += 1
+        total_rows += len(rows)
         print(f"[Load] {target_name} rows: {len(rows)} | {parquet_path}")
         print(f"[Done] wrote: {output_path}")
 
     print(f"[Done] rebuilt files: {rebuilt_count}")
+    print(f"[Done] total rows: {total_rows}")
     return 0
 
 

@@ -10,10 +10,13 @@ from utils.set_env import set_hf_cache
 from utils.cli import parse_args
 from utils.config import load_config, merge_config_into_args
 from utils.validate import validate_mode_args, validate_thinking, validate_resume_sample_args
-from utils.load_cases import load_cases
+from data.load_data import load_cases
 from utils.evaluate import build_sandbox_config, evaluate_cases
-from utils.resume import sample_cases_with_resume
+from utils.multi_api_runner import MultiAPIRunner
+from utils.resume import append_sample_results, sample_cases_with_resume, validate_unique_case_ids
 from utils.template import TEMPLATES
+from utils.vllm_ray import VLLMRay
+from utils.vllm_server import VLLMServer
 
 
 SAMPLES_FILENAME = "samples.jsonl"
@@ -87,7 +90,6 @@ def start_vllm_server(args):
     if not args.use_server:
         return None, []
 
-    from utils.vllm_server import VLLMServer
 
     print("=" * 60)
     print("Starting vLLM Server mode")
@@ -157,16 +159,12 @@ def register_signal_handlers(manager_holder):
 
 def load_runner(args, vllm_server_endpoints):
     if args.use_server:
-        from utils.multi_api_runner import MultiAPIRunner
-
         return MultiAPIRunner(
             args=args,
             model=args.model_name,
             api_endpoints=vllm_server_endpoints,
             )
     if args.use_ray:
-        from utils.vllm_ray import VLLMRay
-
         return VLLMRay(args, args.model_path)
     raise ValueError("Exactly one of --use_server or --use_ray must be set.")
 
@@ -243,9 +241,29 @@ def write_results(output_path, cases):
 def write_accuracy(output_path, cases):
     accuracy = 0.0
     if cases:
-        accuracy = sum(float(case.get("scalebox", 0.0)) for case in cases) / len(cases)
+        accuracy = sum(float(case.get("scalebox_score", case.get("scalebox", 0.0))) for case in cases) / len(cases)
     with open(output_path, "w", encoding="utf-8") as file:
         json.dump({"accuracy": round(accuracy, 4)}, file, ensure_ascii=False, indent=2)
+
+
+def build_sample_save_callback(cases, samples_path):
+    def save_callback(index, samples, run_cases=cases):
+        if not samples:
+            return
+        case = run_cases[index]
+        append_sample_results(samples_path, case["id"], case["prompt"], samples)
+
+    return save_callback
+
+
+def sample_cases_with_incremental_save(cases, args, vllm_server_endpoints, samples_path):
+    with open(samples_path, "w", encoding="utf-8"):
+        pass
+
+    save_callback = build_sample_save_callback(cases, samples_path)
+    sampled_cases = sample_cases(cases, args, vllm_server_endpoints, save_callback=save_callback)
+    write_sample_results(samples_path, sampled_cases)
+    return sampled_cases
 
 
 def main():
@@ -276,6 +294,7 @@ def main():
             vllm_server_endpoints = []
 
         cases = load_cases(args, config)
+        validate_unique_case_ids(cases)
         print_prompt_preview(cases, args)
 
         if args.eval_only:
@@ -303,8 +322,12 @@ def main():
                     write_sample_results,
                 )
             else:
-                sampled_cases = sample_cases(cases, args, vllm_server_endpoints)
-                write_sample_results(samples_path, sampled_cases)
+                sampled_cases = sample_cases_with_incremental_save(
+                    cases,
+                    args,
+                    vllm_server_endpoints,
+                    samples_path,
+                )
             print(f"Sample results saved to: {samples_path}")
         else:
             samples_path = os.path.join(args.output_dir, SAMPLES_FILENAME)
@@ -319,8 +342,12 @@ def main():
                     write_sample_results,
                 )
             else:
-                sampled_cases = sample_cases(cases, args, vllm_server_endpoints)
-                write_sample_results(samples_path, sampled_cases)
+                sampled_cases = sample_cases_with_incremental_save(
+                    cases,
+                    args,
+                    vllm_server_endpoints,
+                    samples_path,
+                )
             print(f"Sample results saved to: {samples_path}")
 
             sandbox_config = build_sandbox_config(config)

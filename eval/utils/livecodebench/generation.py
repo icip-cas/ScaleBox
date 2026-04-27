@@ -221,7 +221,6 @@ def load_code_cpp_generation_dataset(
         version_tag=release_version,
         trust_remote_code=True,
     )
-    from tqdm import tqdm
     dataset = [CodeGenerationProblem(**p) for p in tqdm(dataset, desc="Building CodeGenerationProblem")]
     if start_date is not None:
         p_start_date = datetime.strptime(start_date, "%Y-%m-%d")

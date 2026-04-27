@@ -417,6 +417,9 @@ class MultiAPIRunner:
                     # Store result
                     async with results_lock:
                         results[orig_idx][sample_idx] = sample
+
+                    if save_callback:
+                        save_callback(orig_idx, [sample])
                     
                     # Update progress bar
                     async with pbar_lock:
@@ -526,10 +529,6 @@ class MultiAPIRunner:
                 sample = results[orig_idx].get(sample_idx, "")
                 samples.append(sample)
             final_results.append(samples)
-
-            # Call callback
-            if save_callback:
-                save_callback(orig_idx, samples)
 
         if len(final_results) != num_prompts:
             raise RuntimeError(
