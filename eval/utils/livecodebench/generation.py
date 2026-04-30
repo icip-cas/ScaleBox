@@ -6,10 +6,15 @@ from enum import Enum
 from datetime import datetime
 from dataclasses import dataclass
 import os
-
+import sys
+from pathlib import Path
 from datasets import load_dataset
 from tqdm import tqdm
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
+from utils.logger import get_logger
+logger = get_logger(__name__)
 
 LCB_ALLOWED_FILES = {
     "release_v1": ["test.jsonl"],
@@ -34,23 +39,19 @@ for start_index in range(1, len(_LCB_VERSIONS) + 1):
             for index in range(start_index, end_index + 1)
         ]
 
-
 class Platform(Enum):
     LEETCODE = "leetcode"
     CODEFORCES = "codeforces"
     ATCODER = "atcoder"
-
 
 class Difficulty(Enum):
     EASY = "easy"
     MEDIUM = "medium"
     HARD = "hard"
 
-
 class TestType(Enum):
     STDIN = "stdin"
     FUNCTIONAL = "functional"
-
 
 @dataclass
 class Test:
@@ -63,7 +64,6 @@ class Test:
         # if self.testtype == TestType.FUNCTIONAL:
         #     self.input = json.loads(self.input)
         #     self.output = json.loads(self.output)
-
 
 @dataclass
 class CodeGenerationProblem:
@@ -158,7 +158,6 @@ class CodeGenerationProblem:
             }
         return res
 
-
 def _resolve_lcb_dataset_dir(dataset_path: str) -> str:
     normalized_path = os.path.abspath(dataset_path)
     if os.path.basename(normalized_path) == "code_generation_lite":
@@ -170,12 +169,10 @@ def _resolve_lcb_dataset_dir(dataset_path: str) -> str:
 
     return normalized_path
 
-
 def _get_lcb_files_for_version(release_version: str) -> list[str]:
     if release_version not in LCB_ALLOWED_FILES:
         raise ValueError(f"Unsupported livecodebench version: {release_version}")
     return LCB_ALLOWED_FILES[release_version]
-
 
 def load_local_code_generation_dataset(
     dataset_path: str,
@@ -206,9 +203,8 @@ def load_local_code_generation_dataset(
         p_end_date = datetime.strptime(end_date, "%Y-%m-%d")
         dataset = [sample for sample in dataset if sample.contest_date <= p_end_date]
 
-    print(f"Loaded {len(dataset)} problems")
+    logger.info(f"Loaded {len(dataset)} problems")
     return dataset
-
 
 def load_code_cpp_generation_dataset(
     release_version="release_v1", start_date=None, end_date=None
@@ -230,6 +226,6 @@ def load_code_cpp_generation_dataset(
         p_end_date = datetime.strptime(end_date, "%Y-%m-%d")
         dataset = [e for e in dataset if e.contest_date <= p_end_date]
 
-    print(f"Loaded {len(dataset)} problems")
+    logger.info(f"Loaded {len(dataset)} problems")
     return dataset
 

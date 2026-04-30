@@ -6,14 +6,13 @@ import subprocess
 import sys
 from pathlib import Path
 
-from datasets import load_dataset
-from tqdm import tqdm
-
 try:
     import polars as pl
 except ImportError:
     pl = None
 
+from datasets import load_dataset
+from tqdm import tqdm
 from utils.livecodebench.generation import load_local_code_generation_dataset
 from utils.template import (
     get_aethercode_prompt,
@@ -24,12 +23,13 @@ from utils.template import (
     language_mappings,
 )
 from utils.validate import validate_benchmark_data_path, validate_eval_path
+from utils.logger import get_logger
 
+logger = get_logger(__name__)
 
 def require_sample_id(sample):
-    """中文：读取样本 id，仅兼容 id 和 question_id。
-    English: Read the sample id and only support id and question_id.
-    """
+    # 中文：读取样本 id，仅兼容 id 和 question_id。
+    # English: Read the sample id and only support id and question_id.
     for key in ["id", "question_id"]:
         try:
             return sample[key]
@@ -41,7 +41,6 @@ def require_sample_id(sample):
             return getattr(sample, attr)
 
     raise KeyError(f"Sample is missing required field `id`: {sample}")
-
 
 def build_dataset_config(benchmark, benchmark_data_path, config):
     if benchmark == "livecodebench":
@@ -67,15 +66,11 @@ def build_dataset_config(benchmark, benchmark_data_path, config):
         "benchmark_data_path": benchmark_data_path,
     }
 
-
 def get_data_dir() -> Path:
     return Path(__file__).resolve().parent
 
-
 def get_default_hf_endpoint() -> str:
     return os.environ.get("HF_ENDPOINT") or "https://huggingface.co"
-
-
 
 def get_auto_download_target(benchmark, config):
     data_dir = get_data_dir()
@@ -111,12 +106,10 @@ def get_auto_download_target(benchmark, config):
         }
     return None
 
-
 def run_download_script(script_path: Path) -> None:
     command = [sys.executable, str(script_path), "--hf-endpoint", get_default_hf_endpoint()]
-    print(f"[data] Auto-downloading benchmark data via: {' '.join(command)}")
+    logger.info(f"Auto-downloading benchmark data via: {' '.join(command)}")
     subprocess.run(command, cwd=str(get_data_dir()), check=True)
-
 
 def resolve_benchmark_data_path(args, config):
     benchmark = config["benchmark"]
@@ -138,9 +131,8 @@ def resolve_benchmark_data_path(args, config):
         run_download_script(Path(target["script_path"]))
 
     args.benchmark_data_path = str(benchmark_data_path)
-    print(f"[data] Using benchmark data path: {args.benchmark_data_path}")
+    logger.info(f"Using benchmark data path: {args.benchmark_data_path}")
     return args.benchmark_data_path
-
 
 def _build_lcb_dataset_from_path(dataset_path, release_version="release_v1", start_date=None, end_date=None):
     return load_local_code_generation_dataset(
@@ -149,7 +141,6 @@ def _build_lcb_dataset_from_path(dataset_path, release_version="release_v1", sta
         start_date=start_date,
         end_date=end_date,
     )
-
 
 def load_lcb_dataset(dataset):
     benchmark_data_path = dataset.get("benchmark_data_path")
@@ -175,7 +166,6 @@ def load_lcb_dataset(dataset):
         })
     return data
 
-
 def load_multipl_e_dataset(dataset):
     benchmark_data_path = dataset.get("benchmark_data_path")
     if not benchmark_data_path:
@@ -194,7 +184,6 @@ def load_multipl_e_dataset(dataset):
             "test": {"type": "assert", "tests": sample["tests"], "stop_tokens": sample["stop_tokens"]},
         })
     return data
-
 
 def convert_test_format(test_code: str, entry_point: str, use_set: bool = False) -> str:
     try:
@@ -236,9 +225,8 @@ def convert_test_format(test_code: str, entry_point: str, use_set: bool = False)
         lines.append(f"check({entry_point})")
         return "\n".join(lines)
     except Exception as e:
-        print(f"Warning: Failed to convert test format: {e}")
+        logger.warning(f"Failed to convert test format: {e}")
         return test_code
-
 
 def load_mbpp_dataset(dataset):
     benchmark_data_path = dataset.get("benchmark_data_path")
@@ -296,7 +284,6 @@ def load_mbpp_dataset(dataset):
         })
     return data
 
-
 def load_humaneval_dataset(dataset):
     benchmark_data_path = dataset.get("benchmark_data_path")
     if not benchmark_data_path:
@@ -311,7 +298,6 @@ def load_humaneval_dataset(dataset):
             "test": {"type": "assert", "test": sample["test"], "entry_point": sample["entry_point"]},
         })
     return data
-
 
 def load_aethercode_dataset(dataset):
     benchmark_data_path = dataset.get("benchmark_data_path")
@@ -367,7 +353,6 @@ def load_aethercode_dataset(dataset):
         })
     return data
 
-
 def build_model_prompt(instance, benchmark, prompt_type, thinking):
     if benchmark == "livecodebench":
         return get_lcb_prompt(instance["raw_data"], prompt_type, thinking)
@@ -380,7 +365,6 @@ def build_model_prompt(instance, benchmark, prompt_type, thinking):
     if benchmark == "aethercode":
         return get_aethercode_prompt(instance, prompt_type, thinking)
     raise ValueError(f"Unsupported benchmark: {benchmark}")
-
 
 def load_benchmark_cases(benchmark, benchmark_data_path, config, prompt_type, thinking):
     dataset_config = build_dataset_config(benchmark, benchmark_data_path, config)
@@ -413,7 +397,6 @@ def load_benchmark_cases(benchmark, benchmark_data_path, config, prompt_type, th
 
     return cases
 
-
 def load_eval_cases(eval_path):
     cases = []
     with open(eval_path, "r", encoding="utf-8") as file:
@@ -422,15 +405,26 @@ def load_eval_cases(eval_path):
             for field in ["id", "prompt", "response"]:
                 if field not in case:
                     raise ValueError(f"Missing `{field}` in eval_only input at line {line_number}")
-            if not isinstance(case["response"], str):
-                raise ValueError(f"`response` must be a string in eval_only input at line {line_number}")
-            cases.append({
-                "id": case["id"],
-                "prompt": case["prompt"],
-                "response": case["response"],
-            })
-    return cases
 
+            # Only accept new format: response must be a list of strings
+            response = case["response"]
+            if not isinstance(response, list):
+                raise ValueError(
+                    f"`response` must be a list of strings in eval_only input at line {line_number}"
+                )
+            if not all(isinstance(r, str) for r in response):
+                raise ValueError(
+                    f"`response` list must contain only strings in eval_only input at line {line_number}"
+                )
+
+            # Expand list of responses into multiple cases
+            for resp in response:
+                cases.append({
+                    "id": case["id"],
+                    "prompt": case["prompt"],
+                    "response": resp,
+                })
+    return cases
 
 def merge_eval_with_benchmark_cases(benchmark_cases, eval_cases):
     benchmark_case_map = {case["id"]: case for case in benchmark_cases}
@@ -452,7 +446,6 @@ def merge_eval_with_benchmark_cases(benchmark_cases, eval_cases):
             merged_case["checker"] = benchmark_case["checker"]
         merged_cases.append(merged_case)
     return merged_cases
-
 
 def load_cases(args, config):
     benchmark = config["benchmark"]

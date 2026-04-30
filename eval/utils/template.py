@@ -5,12 +5,10 @@ from enum import Enum
 import os
 import re
 
-
 class Role(Enum):
     SYSTEM = "system"
     HUMAN = "human"
     ASSISTANT = "gpt"
-
 
 @dataclass
 class ConversationTemplate:
@@ -30,7 +28,6 @@ class ConversationTemplate:
             "default_system_message": self.default_system_message,
         }
 
-
 language_mappings = {
     "cs": "csharp",
     "jl": "julia",
@@ -46,8 +43,6 @@ language_mappings = {
     "d": "D_ut",
 }
 
-
-
 LCB_SYSTEM_MESSAGE_GENERIC = "You are an expert Python programmer. You will be given a question (problem specification) and will generate a correct Python program that matches the specification and passes all tests."
 LCB_SYSTEM_MESSAGE_DEEPSEEK_R1 = (
     "<｜begin▁of▁sentence｜>A conversation between User and Assistant. "
@@ -58,7 +53,6 @@ LCB_SYSTEM_MESSAGE_DEEPSEEK_R1 = (
 LCB_FORMATTING_MESSAGE_WITH_STARTER_CODE = "You will use the following starter code to write the solution to the problem and enclose your code within delimiters."
 LCB_FORMATTING_WITHOUT_STARTER_CODE = "Read the inputs from stdin solve the problem and write the answer to stdout (do not directly test on the sample inputs). Enclose your code within delimiters as follows. Ensure that when the python program runs, it reads the inputs, runs the algorithm and writes output to STDOUT."
 
-
 LCB_LLAMA_PROMPT_DIR = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
     "LiveCodeBench",
@@ -68,15 +62,12 @@ LCB_LLAMA_PROMPT_DIR = os.path.join(
     "generation",
 )
 
-
 def _load_lcb_llama_examples(file_name):
     with open(os.path.join(LCB_LLAMA_PROMPT_DIR, file_name), "r", encoding="utf-8") as file:
         return json.load(file)
 
-
 LCB_LLAMA_FUNC_EXAMPLES = _load_lcb_llama_examples("func.json")
 LCB_LLAMA_STDIN_EXAMPLES = _load_lcb_llama_examples("stdin.json")
-
 
 def _get_lcb_llama_prompt(question):
     starter_code = getattr(question, "starter_code", "")
@@ -104,7 +95,6 @@ def _get_lcb_llama_prompt(question):
         }
     )
 
-
 def _get_lcb_deepseek_r1_user_prompt(question):
     starter_code = getattr(question, "starter_code", "")
     prompt = "You will be given a question (problem specification) and will generate a correct Python program that matches the specification and passes all tests.\n\n"
@@ -118,12 +108,10 @@ def _get_lcb_deepseek_r1_user_prompt(question):
     prompt += "<｜Assistant｜>"
     return prompt
 
-
 def _get_qwen3_thinking_prefix(think):
     if think:
         return ""
     return "<think>\n\n</think>\n\n"
-
 
 def _get_lcb_user_prompt(question, prompt_type):
     starter_code = getattr(question, "starter_code", "")
@@ -243,7 +231,6 @@ TEMPLATES = {
     ),
 }
 
-
 def get_lcb_prompt(question, prompt_type, think) -> str:
     if prompt_type == "llama3":
         return _get_lcb_llama_prompt(question)
@@ -289,7 +276,6 @@ def get_mbpp_prompt(instance, prompt_type, think) -> str:
         full_prompt += _get_qwen3_thinking_prefix(think)
     return full_prompt
 
-
 def get_humaneval_prompt(instance, prompt_type, think) -> str:
     temp_obj = TEMPLATES[prompt_type]
     full_prompt = ""
@@ -305,7 +291,6 @@ def get_humaneval_prompt(instance, prompt_type, think) -> str:
     if prompt_type == "qwen3":
         full_prompt += _get_qwen3_thinking_prefix(think)
     return full_prompt
-
 
 def get_multipl_e_prompt(instance, prompt_type, think) -> str:
     temp_obj = TEMPLATES[prompt_type]
@@ -324,7 +309,6 @@ def get_multipl_e_prompt(instance, prompt_type, think) -> str:
     if prompt_type == "qwen3":
         full_prompt += _get_qwen3_thinking_prefix(think)
     return full_prompt
-
 
 # The template seems problematic: the model often outputs Python instead of C++.
 def get_aethercode_prompt(instance, prompt_type, think) -> str:

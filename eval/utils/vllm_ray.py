@@ -3,8 +3,6 @@ import os
 import socket
 from abc import ABC
 
-from tqdm import tqdm
-
 try:
     from vllm import LLM, SamplingParams
 except ImportError:
@@ -15,6 +13,10 @@ try:
 except ImportError:
     ray = None
 
+from tqdm import tqdm
+from .logger import get_logger
+
+logger = get_logger(__name__)
 
 class VLLMRay(ABC):
     def __init__(self, args, model):
@@ -158,7 +160,7 @@ class VLLMRay(ABC):
         stop_tokens_by_prompt=None,
     ):
         os.environ["VLLM_PORT"] = str(vllm_port)
-        print(f"Using VLLM_PORT: {vllm_port}")
+        logger.info(f"Using VLLM_PORT: {vllm_port}")
 
         model = LLM(
             model=model_path,

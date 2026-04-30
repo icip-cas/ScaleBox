@@ -1,6 +1,5 @@
 import yaml
 
-
 SUPPORTED_BENCHMARKS = {
     "mbpp",
     "mbppplus",
@@ -84,7 +83,6 @@ ALLOWED_SECTION_FIELDS = {
 
 ALLOWED_VLLM_SERVER_FIELDS = {"base_port", "host", "dtype", "wait_timeout"}
 
-
 def get_nested_value(config, path):
     current_value = config
     for key in path:
@@ -92,8 +90,6 @@ def get_nested_value(config, path):
             return MISSING
         current_value = current_value[key]
     return current_value
-
-
 
 def validate_nested_config_shape(config):
     unexpected_top_level_fields = [key for key in config if key not in NESTED_TOP_LEVEL_FIELDS]
@@ -153,8 +149,6 @@ def validate_nested_config_shape(config):
     if "huggingFace" in benchmark_config:
         raise ValueError("`benchmark.huggingFace` is no longer supported; please use `benchmark.data_path` instead.")
 
-
-
 def flatten_nested_config(config):
     validate_nested_config_shape(config)
 
@@ -166,12 +160,8 @@ def flatten_nested_config(config):
         flattened_config[flat_key] = value
     return flattened_config
 
-
-
 def load_config(config_path):
-    """中文：加载单 benchmark 的 YAML 配置文件。
-    English: Load a single-benchmark YAML config file.
-    """
+    # Load a single-benchmark YAML config file.
     with open(config_path, "r", encoding="utf-8") as file:
         try:
             raw_config = yaml.safe_load(file)
@@ -194,12 +184,8 @@ def load_config(config_path):
         raise ValueError("`aethercode` config must include `benchmark.special_judge_file`.")
     return config
 
-
-
 def merge_config_into_args(args, config):
-    """中文：把配置文件中的参数写回 args，CLI 显式值优先。
-    English: Merge config values into args while preserving explicit CLI overrides.
-    """
+    # Merge config values into args while preserving explicit CLI overrides.
     for key, value in config.items():
         if not hasattr(args, key):
             continue

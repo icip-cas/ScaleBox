@@ -5,10 +5,8 @@ import re
 import aiohttp
 from tqdm import tqdm
 
-
 MAX_CONCURRENCY = 32
 DEFAULT_TOTAL_TIMEOUT = 300
-
 
 def summarize_sandbox_result(result, run_all_cases):
     if run_all_cases:
@@ -17,7 +15,6 @@ def summarize_sandbox_result(result, run_all_cases):
             passed_count = sum(1 for test in tests if isinstance(test, dict) and test.get("passed") is True)
             return passed_count / len(tests)
     return 1.0 if isinstance(result, dict) and result.get("accepted") else 0.0
-
 
 def build_sandbox_config(config):
     sandbox_config = {
@@ -30,8 +27,6 @@ def build_sandbox_config(config):
     if "language" in config:
         sandbox_config["language"] = config["language"]
     return sandbox_config
-
-
 
 def extract_completion(response_text, language, thinking):
     completion = re.split(r"</think>\s*", response_text)[-1] if thinking else response_text
@@ -59,8 +54,6 @@ def extract_completion(response_text, language, thinking):
 
     return completion
 
-
-
 def get_case_language(benchmark, case):
     if benchmark == "aethercode":
         return "cpp"
@@ -68,11 +61,9 @@ def get_case_language(benchmark, case):
         return case.get("language")
     return "python"
 
-
 async def get_sandbox_result(benchmark, case, completion, config, url, session):
-    """中文：组装 sandbox 请求并返回执行结果。
-    English: Build a sandbox request and return the execution result.
-    """
+    # 中文：组装 sandbox 请求并返回执行结果。
+    # English: Build a sandbox request and return the execution result.
     config_copy = copy.deepcopy(config)
     config_copy["language"] = get_case_language(benchmark, case)
 
@@ -91,7 +82,6 @@ async def get_sandbox_result(benchmark, case, completion, config, url, session):
         response.raise_for_status()
         return await response.json()
 
-
 async def _evaluate_case(case, benchmark, sandbox_config, args, session):
     language = get_case_language(benchmark, case)
     completion = extract_completion(case["response"], language, args.thinking)
@@ -105,7 +95,6 @@ async def _evaluate_case(case, benchmark, sandbox_config, args, session):
         "score": summarize_sandbox_result(result, sandbox_config["extra"].get("run_all_cases", False)),
         "raw_result": result,
     }
-
 
 async def evaluate_cases_async(cases, benchmark, sandbox_config, args):
     timeout = aiohttp.ClientTimeout(total=4000)
@@ -130,8 +119,6 @@ async def evaluate_cases_async(cases, benchmark, sandbox_config, args):
         if pbar is not None:
             pbar.close()
     return results
-
-
 
 def evaluate_cases(cases, benchmark, sandbox_config, args):
     sandbox_results = asyncio.run(evaluate_cases_async(cases, benchmark, sandbox_config, args))

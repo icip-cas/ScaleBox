@@ -1,45 +1,29 @@
 # ScaleBox Eval Configuration Reference
 
-This document only explains the configuration structure and field meanings for `eval/config/*.yaml`.
+This document explains the configuration structure and field meanings for `eval/config/*.yaml`.
 
 ## 1. Configuration Structure
 
-Configuration files must use nested YAML. The top level must contain these 6 sections:
+Configuration files use nested YAML with 6 top-level sections:
 
 ```yaml
-run:
-benchmark:
-model:
-sampling:
-sandbox:
-output:
+run:        # Execution mode and control flow
+benchmark:  # Benchmark selection and data
+model:      # Model configuration
+sampling:   # Sampling parameters
+sandbox:    # Evaluation sandbox settings
+output:     # Output directory
 ```
 
-## 2. Key Rules
+**Note:** CLI arguments override YAML values when both are specified.
 
-- If the same parameter is set in both CLI and YAML, the CLI value takes priority.
-- `run.sample_only` and `run.eval_only` cannot both be `true`.
-- When not using `eval_only`, exactly one of `run.use_server` and `run.use_ray` must be `true`.
-- If `run.eval_only: true`, then `run.eval_path` is required.
-- For `benchmark.data_path`:
-  - `livecodebench` and `aethercode` require a directory path.
-  - Other benchmarks require a `.jsonl` file path.
-- `livecodebench` requires `benchmark.version`.
-- `aethercode` requires both `benchmark.version` and `benchmark.special_judge_file`.
+## 2. Auto-Download Rules
 
-## 3. Auto-Download Rules
+When `benchmark.data_path: null`, the program attempts auto-download. Supported benchmarks: `mbpp`, `mbppplus`, `humaneval`, `humanevalplus`, `livecodebench`, `aethercode`.
 
-When `benchmark.data_path: null`:
+For `multipl_e`: run `eval/data/download_multiple.py` manually, then set the `.jsonl` file path in `benchmark.data_path`.
 
-- Auto-download is supported for: `mbpp`, `mbppplus`, `humaneval`, `humanevalplus`, `livecodebench`, `aethercode`
-- Auto-download is not supported for: `multipl_e`
-
-The workflow for `multipl_e` is:
-
-1. Run `eval/data/download_multiple.py` to download all data.
-2. Set the specific `.jsonl` file path in `benchmark.data_path`.
-
-## 4. Field Reference
+## 3. Field Reference
 
 ### `run`
 

@@ -1,14 +1,11 @@
-"""
-VLLMServer - manage startup and shutdown of multiple vLLM servers.
-
-Features:
-1. Automatically calculate how many model instances can be deployed based on total GPU/NPU count and per-model usage
-2. Automatically allocate GPU/NPU devices and ports
-3. Launch multiple vLLM server processes
-4. Provide health checks and wait-for-ready utilities
-5. Provide a method to stop all servers
-6. Support Huawei Ascend NPUs
-"""
+# VLLMServer - manage startup and shutdown of multiple vLLM servers.
+# Features:
+# 1. Automatically calculate how many model instances can be deployed based on total GPU/NPU count and per-model usage
+# 2. Automatically allocate GPU/NPU devices and ports
+# 3. Launch multiple vLLM server processes
+# 4. Provide health checks and wait-for-ready utilities
+# 5. Provide a method to stop all servers
+# 6. Support Huawei Ascend NPUs
 
 import os
 import subprocess
@@ -19,11 +16,13 @@ import requests
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 import threading
+from .logger import get_logger
 
+logger = get_logger(__name__)
 
 @dataclass
 class ServerInstance:
-    """Represents one vLLM server instance."""
+    # Represents one vLLM server instance.
     process: subprocess.Popen
     port: int
     device_ids: List[int]  # Renamed: list of GPU or NPU device IDs
@@ -33,40 +32,32 @@ class ServerInstance:
     def is_alive(self) -> bool:
         return self.process.poll() is None
 
-
 class VLLMServer:
-    """
-    Manage multiple vLLM server instances (supports GPU and NPU).
-    
-    Example:
-    ```python
-    # GPU mode
-    manager = VLLMServer(
-        model_path="/path/to/model",
-        num_gpus_total=8,
-        num_gpus_per_model=2,
-        base_port=8000,
-    )
-    
-    # NPU mode
-    manager = VLLMServer(
-        model_path="/path/to/model",
-        num_gpus_total=8,
-        num_gpus_per_model=2,
-        base_port=8000,
-        use_npu=True,
-    )
-    
-    # Start all servers
-    endpoints = manager.start_servers()
-    # endpoints = ["http://localhost:8000/v1", "http://localhost:8001/v1", ...]
-    
-    # Use endpoints for sampling...
-    
-    # Stop all servers
-    manager.stop_servers()
-    ```
-    """
+    # Manage multiple vLLM server instances (supports GPU and NPU).
+    # Example:
+    # ```python
+    # # GPU mode
+    # manager = VLLMServer(
+    # model_path="/path/to/model",
+    # num_gpus_total=8,
+    # num_gpus_per_model=2,
+    # base_port=8000,
+    # )
+    # # NPU mode
+    # manager = VLLMServer(
+    # model_path="/path/to/model",
+    # num_gpus_total=8,
+    # num_gpus_per_model=2,
+    # base_port=8000,
+    # use_npu=True,
+    # )
+    # # Start all servers
+    # endpoints = manager.start_servers()
+    # # endpoints = ["http://localhost:8000/v1", "http://localhost:8001/v1", ...]
+    # # Use endpoints for sampling...
+    # # Stop all servers
+    # manager.stop_servers()
+    # ```
     
     def __init__(
         self,
@@ -85,25 +76,22 @@ class VLLMServer:
         wait_timeout: int = 600,
         health_check_interval: int = 5,
     ):
-        """
-        Initialize VLLMServer.
-        
-        Args:
-            model_path: Model path
-            num_gpus_total: Total number of GPUs/NPUs
-            num_gpus_per_model: Number of GPUs/NPUs used per model
-            base_port: Starting port
-            host: Host address to bind the server
-            max_model_len: Max model length (optional)
-            dtype: Data type (auto/float16/bfloat16/float32)
-            trust_remote_code: Whether to trust remote code
-            extra_args: Extra vLLM startup arguments
-            served_model_name: Served model name (used in API calls)
-            use_npu: Whether to use Huawei Ascend NPUs
-            mem_fraction: GPU/NPU memory utilization fraction (0.0-1.0)
-            wait_timeout: Timeout waiting for service readiness (seconds)
-            health_check_interval: Health check interval (seconds)
-        """
+        # Initialize VLLMServer.
+        # Args:
+        # model_path: Model path
+        # num_gpus_total: Total number of GPUs/NPUs
+        # num_gpus_per_model: Number of GPUs/NPUs used per model
+        # base_port: Starting port
+        # host: Host address to bind the server
+        # max_model_len: Max model length (optional)
+        # dtype: Data type (auto/float16/bfloat16/float32)
+        # trust_remote_code: Whether to trust remote code
+        # extra_args: Extra vLLM startup arguments
+        # served_model_name: Served model name (used in API calls)
+        # use_npu: Whether to use Huawei Ascend NPUs
+        # mem_fraction: GPU/NPU memory utilization fraction (0.0-1.0)
+        # wait_timeout: Timeout waiting for service readiness (seconds)
+        # health_check_interval: Health check interval (seconds)
         self.model_path = model_path
         self.num_gpus_total = num_gpus_total
         self.num_gpus_per_model = num_gpus_per_model
@@ -147,12 +135,12 @@ class VLLMServer:
         # ========================================
         
     def _log(self, message: str):
-        """Thread-safe logging output."""
+        # Thread-safe logging output.
         with self._log_lock:
-            print(f"[VLLMServer] {message}")
+            logger.info(message)
     
     def _find_free_port(self, start_port: int) -> int:
-        """Find an available port starting from the specified port."""
+        # Find an available port starting from the specified port.
         port = start_port
         while port < start_port + 1000:
             # ========== Fix: skip already allocated ports ==========
@@ -173,12 +161,12 @@ class VLLMServer:
         raise RuntimeError(f"Unable to find an available port (starting from {start_port})")
     
     def _allocate_devices(self, instance_idx: int) -> List[int]:
-        """Allocate GPU/NPU devices for a specific instance."""
+        # Allocate GPU/NPU devices for a specific instance.
         start_device = instance_idx * self.num_gpus_per_model
         return list(range(start_device, start_device + self.num_gpus_per_model))
     
     def _build_server_command(self, port: int, device_ids: List[int]) -> List[str]:
-        """Build the vLLM server startup command."""
+        # Build the vLLM server startup command.
         # Use the `vllm serve` command (Huawei-recommended)
         cmd = [
             "vllm", "serve", self.model_path,
@@ -211,7 +199,7 @@ class VLLMServer:
         return cmd
     
     def _setup_npu_environment(self, env: dict, device_ids: List[int]) -> dict:
-        """Set NPU-related environment variables."""
+        # Set NPU-related environment variables.
         device_str = ",".join(map(str, device_ids))
         
         # Huawei Ascend NPU environment variables
@@ -236,7 +224,7 @@ class VLLMServer:
         return env
     
     def _setup_gpu_environment(self, env: dict, device_ids: List[int]) -> dict:
-        """Set GPU-related environment variables."""
+        # Set GPU-related environment variables.
         # If CUDA_VISIBLE_DEVICES is already set, use it as the available GPU list
         if "CUDA_VISIBLE_DEVICES" in os.environ and os.environ["CUDA_VISIBLE_DEVICES"]:
             available_gpus = [int(x.strip()) for x in os.environ["CUDA_VISIBLE_DEVICES"].split(",") if x.strip()]
@@ -249,7 +237,7 @@ class VLLMServer:
         return env
     
     def _wait_for_server(self, port: int, timeout: int) -> bool:
-        """Wait for the server to become ready."""
+        # Wait for the server to become ready.
         health_url = f"http://localhost:{port}/health"
         models_url = f"http://localhost:{port}/v1/models"
         
@@ -270,7 +258,7 @@ class VLLMServer:
         return False
     
     def _start_single_server(self, instance_idx: int) -> Optional[ServerInstance]:
-        """Start a single vLLM server."""
+        # Start a single vLLM server.
         # Allocate devices
         device_ids = self._allocate_devices(instance_idx)
         
@@ -330,15 +318,11 @@ class VLLMServer:
             return None
     
     def start_servers(self, wait_ready: bool = True) -> List[str]:
-        """
-        Start all vLLM server instances.
-        
-        Args:
-            wait_ready: Whether to wait until all services are ready
-            
-        Returns:
-            List of API endpoints for all services
-        """
+        # Start all vLLM server instances.
+        # Args:
+        # wait_ready: Whether to wait until all services are ready
+        # Returns:
+        # List of API endpoints for all services
         if self._started:
             self._log("Servers are already running, returning existing endpoints")
             return self.get_endpoints()
@@ -410,19 +394,19 @@ class VLLMServer:
         return endpoints
     
     def get_endpoints(self) -> List[str]:
-        """Get API endpoint list for all services."""
+        # Get API endpoint list for all services.
         return [instance.api_url for instance in self.server_instances]
     
     def get_chat_endpoints(self) -> List[str]:
-        """Get Chat API endpoint list for all services."""
+        # Get Chat API endpoint list for all services.
         return [f"{instance.api_url}/chat/completions" for instance in self.server_instances]
     
     def get_completions_endpoints(self) -> List[str]:
-        """Get Completions API endpoint list for all services."""
+        # Get Completions API endpoint list for all services.
         return [f"{instance.api_url}/completions" for instance in self.server_instances]
     
     def health_check(self) -> Dict[str, bool]:
-        """Check health status of all services."""
+        # Check health status of all services.
         results = {}
         for instance in self.server_instances:
             try:
@@ -433,7 +417,7 @@ class VLLMServer:
         return results
     
     def stop_servers(self):
-        """Stop all vLLM server instances."""
+        # Stop all vLLM server instances.
         if not self.server_instances:
             self._log("No running service instances to stop")
             return
@@ -483,19 +467,19 @@ class VLLMServer:
         self._log("All vLLM server instances have been stopped")
     
     def __enter__(self):
-        """Context manager entry."""
+        # Context manager entry.
         self.start_servers()
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        """Context manager exit."""
+        # Context manager exit.
         self.stop_servers()
         return False
     
     def get_model_name(self) -> str:
-        """Get the model name served by the service."""
+        # Get the model name served by the service.
         return self.served_model_name
     
     def get_device_type(self) -> str:
-        """Get device type."""
+        # Get device type.
         return self.device_name

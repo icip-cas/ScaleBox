@@ -9,7 +9,13 @@ import requests
 from utils.set_env import set_hf_cache
 from utils.cli import parse_args
 from utils.config import load_config, merge_config_into_args
-from utils.validate import validate_mode_args, validate_thinking, validate_resume_sample_args
+from utils.validate import (
+    validate_mode_args,
+    validate_thinking,
+    validate_resume_sample_args,
+    print_prompt_preview,
+    check_sandbox_endpoint,
+)
 from data.load_data import load_cases
 from utils.evaluate import build_sandbox_config, evaluate_cases
 from utils.multi_api_runner import MultiAPIRunner
@@ -17,83 +23,29 @@ from utils.resume import append_sample_results, sample_cases_with_resume, valida
 from utils.template import TEMPLATES
 from utils.vllm_ray import VLLMRay
 from utils.vllm_server import VLLMServer
+from utils.logger import setup_logger, get_logger
 
+logger = get_logger(__name__)
 
 SAMPLES_FILENAME = "samples.jsonl"
 RESULTS_FILENAME = "results.jsonl"
 ACCURACY_FILENAME = "accuracy.json"
 
-
-def print_prompt_preview(cases, args):
-    if not cases:
-        return
-
-    preview_case = cases[0]
-    print("=" * 60)
-    print("Prompt preview")
-    print(f"id: {preview_case['id']}")
-    print(f"prompt_type: {args.prompt_type}")
-    print(f"thinking: {args.thinking}")
-    print("model_prompt:")
-    print(preview_case["model_prompt"])
-    print("=" * 60)
-
-
-def check_sandbox_endpoint(url):
-    """中文：向 sandbox 接口发送一个最小测试请求，检查服务是否可用。
-    English: Send a minimal test request to the sandbox endpoint and check whether it is available.
-    """
-    payload = {
-        "completion": "```python\nimport re\ndef text_match_three(text):\n        patterns = 'ab{3}?'\n        return re.search(patterns,  text)\n```",
-        "config": {
-            "language": "python",
-            "provided_data": {
-                "test_cases": {
-                    "type": "assert",
-                    "test": "def check(text_match_three):\n    assert not text_match_three(\"abc\")",
-                    "entry_point": "text_match_three",
-                },
-            },
-        },
-    }
-    try:
-        response = requests.post(url, json=payload, timeout=30)
-        response.raise_for_status()
-        result = response.json()
-        print(json.dumps(result, indent=2, ensure_ascii=False))
-        assert result.get("accepted") is True, result
-    except Exception as e:
-        print(f"[sandbox check] {type(e).__name__}: {e} | url={url}")
-        raise
-
-
 def create_timestamped_output_dir(output_dir):
-    """中文：在用户指定目录下创建时间戳子目录，并将本次结果写入其中。
-    English: Create a timestamped subdirectory under the user output directory for this run.
-    """
+    # Create a timestamped subdirectory under the user output directory for this run.
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     run_output_dir = os.path.join(output_dir, timestamp)
-    suffix = 1
-    while os.path.exists(run_output_dir):
-        run_output_dir = os.path.join(output_dir, f"{timestamp}_{suffix}")
-        suffix += 1
     os.makedirs(run_output_dir)
-    print(f"[Output] Results will be saved to: {run_output_dir}")
+    logger.info(f"Results will be saved to: {run_output_dir}")
     return run_output_dir
 
-
 def start_vllm_server(args):
-    """中文：按当前配置启动 vLLM Server。
-    English: Start vLLM server instances from the runtime config.
-    """
+    # Start vLLM server instances from the runtime config.
     if not args.use_server:
         return None, []
 
-
-    print("=" * 60)
-    print("Starting vLLM Server mode")
-    print("=" * 60)
+    logger.info("Starting vLLM Server mode")
 
     if not args.model_path:
         raise ValueError("`--model_path` is required when using `--use_server`.")
@@ -115,47 +67,35 @@ def start_vllm_server(args):
 
     try:
         vllm_server_endpoints = vllm_server.start_servers(wait_ready=True)
-        print(f"vLLM Server started successfully with {len(vllm_server_endpoints)} instance(s)")
+        logger.info(f"vLLM Server started successfully with {len(vllm_server_endpoints)} instance(s)")
         for index, endpoint in enumerate(vllm_server_endpoints):
-            print(f"  Instance {index}: {endpoint}")
-        print("=" * 60)
+            logger.info(f"  Instance {index}: {endpoint}")
         return vllm_server, vllm_server_endpoints
     except Exception:
         cleanup_vllm_server(vllm_server)
         raise
 
-
 def cleanup_vllm_server(vllm_server):
     if vllm_server is None:
         return None
 
-    print("=" * 60)
-    print("Shutting down vLLM Server...")
+    logger.info("Shutting down vLLM Server...")
     vllm_server.stop_servers()
-    print("vLLM Server stopped")
-    print("=" * 60)
+    logger.info("vLLM Server stopped")
     return None
 
-
 def register_signal_handlers(manager_holder):
-    """中文：注册中断/终止信号处理器。
-    用于在程序被 Ctrl+C 或系统终止时，先关闭已启动的本地 vLLM 服务，再退出。
-
-    English: Register interrupt/termination signal handlers.
-    This ensures the started local vLLM server is stopped before the program exits
-    when interrupted by Ctrl+C or terminated by the system.
-    """
+    # Register interrupt/termination signal handlers.
+    # This ensures the started local vLLM server is stopped before the program exits
+    # when interrupted by Ctrl+C or terminated by the system.
 
     def signal_handler(signum, frame):
-        print("\n" + "=" * 60, flush=True)
-        print("Termination signal received, cleaning up resources...", flush=True)
+        logger.info("Termination signal received, cleaning up resources...")
         manager_holder["manager"] = cleanup_vllm_server(manager_holder["manager"])
-        print("=" * 60, flush=True)
         sys.exit(0)
 
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-
 
 def load_runner(args, vllm_server_endpoints):
     if args.use_server:
@@ -168,7 +108,6 @@ def load_runner(args, vllm_server_endpoints):
         return VLLMRay(args, args.model_path)
     raise ValueError("Exactly one of --use_server or --use_ray must be set.")
 
-
 def _normalize_case_stop_tokens(case):
     stop_tokens = case.get("test", {}).get("stop_tokens")
     if not stop_tokens:
@@ -176,7 +115,6 @@ def _normalize_case_stop_tokens(case):
     if isinstance(stop_tokens, str):
         stop_tokens = stop_tokens.split(",")
     return [str(token) for token in stop_tokens if str(token).strip()]
-
 
 def sample_cases(cases, args, vllm_server_endpoints, save_callback=None):
     prompts = [case["model_prompt"] for case in cases]
@@ -214,37 +152,94 @@ def sample_cases(cases, args, vllm_server_endpoints, save_callback=None):
             expanded_cases.append(expanded_case)
     return expanded_cases
 
-
 def write_sample_results(output_path, cases):
-    with open(output_path, "w", encoding="utf-8") as file:
-        for case in cases:
-            output_case = {
-                "id": case["id"],
+    # Aggregate cases by id to group multiple samples together
+    cases_by_id = {}
+    for case in cases:
+        case_id = case["id"]
+        if case_id not in cases_by_id:
+            cases_by_id[case_id] = {
+                "id": case_id,
                 "prompt": case["prompt"],
-                "response": case["response"],
+                "responses": []
+            }
+        cases_by_id[case_id]["responses"].append(case["response"])
+
+    # Write aggregated results
+    with open(output_path, "w", encoding="utf-8") as file:
+        for case_id in cases_by_id:
+            output_case = {
+                "id": cases_by_id[case_id]["id"],
+                "prompt": cases_by_id[case_id]["prompt"],
+                "response": cases_by_id[case_id]["responses"],
             }
             file.write(json.dumps(output_case, ensure_ascii=False) + "\n")
-
 
 def write_results(output_path, cases):
-    with open(output_path, "w", encoding="utf-8") as file:
-        for case in cases:
-            output_case = {
-                "id": case["id"],
+    # Aggregate cases by id to group multiple samples together
+    cases_by_id = {}
+    case_order = []  # Track the order of first appearance
+
+    for case in cases:
+        case_id = case["id"]
+        if case_id not in cases_by_id:
+            cases_by_id[case_id] = {
+                "id": case_id,
                 "prompt": case["prompt"],
-                "response": case["response"],
-                "scalebox": case["scalebox"],
+                "responses": [],
+                "scalebox": []
+            }
+            case_order.append(case_id)
+
+        # Append response and scalebox in order
+        cases_by_id[case_id]["responses"].append(case["response"])
+        cases_by_id[case_id]["scalebox"].append(case["scalebox"])
+
+    # Write aggregated results in the order they first appeared
+    with open(output_path, "w", encoding="utf-8") as file:
+        for case_id in case_order:
+            output_case = {
+                "id": cases_by_id[case_id]["id"],
+                "prompt": cases_by_id[case_id]["prompt"],
+                "responses": cases_by_id[case_id]["responses"],
+                "scalebox": cases_by_id[case_id]["scalebox"],
             }
             file.write(json.dumps(output_case, ensure_ascii=False) + "\n")
 
-
 def write_accuracy(output_path, cases):
-    accuracy = 0.0
-    if cases:
-        accuracy = sum(float(case.get("scalebox_score", case.get("scalebox", 0.0))) for case in cases) / len(cases)
-    with open(output_path, "w", encoding="utf-8") as file:
-        json.dump({"accuracy": round(accuracy, 4)}, file, ensure_ascii=False, indent=2)
+    # Aggregate cases by id to collect scalebox scores
+    cases_by_id = {}
 
+    for case in cases:
+        case_id = case["id"]
+        if case_id not in cases_by_id:
+            cases_by_id[case_id] = []
+
+        # Collect scalebox scores for this prompt
+        scalebox_score = float(case.get("scalebox_score", case.get("scalebox", 0.0)))
+        cases_by_id[case_id].append(scalebox_score)
+
+    # Calculate accuracy for each sample position (column-wise average)
+    # accuracy[i] = average of all prompts' i-th sample
+    if not cases_by_id:
+        accuracy_list = []
+        mean_accuracy = 0.0
+    else:
+        # Get the number of samples (assume all prompts have the same number of samples)
+        n_samples = len(next(iter(cases_by_id.values())))
+
+        accuracy_list = []
+        for sample_idx in range(n_samples):
+            # Calculate average accuracy at this sample position across all prompts
+            scores_at_position = [scores[sample_idx] for scores in cases_by_id.values() if sample_idx < len(scores)]
+            avg_accuracy = sum(scores_at_position) / len(scores_at_position) if scores_at_position else 0.0
+            accuracy_list.append(round(avg_accuracy, 4))
+
+        # Calculate mean of all accuracies
+        mean_accuracy = round(sum(accuracy_list) / len(accuracy_list), 4) if accuracy_list else 0.0
+
+    with open(output_path, "w", encoding="utf-8") as file:
+        json.dump({"accuracy": accuracy_list, "mean_accuracy": mean_accuracy}, file, ensure_ascii=False, indent=2)
 
 def build_sample_save_callback(cases, samples_path):
     def save_callback(index, samples, run_cases=cases):
@@ -255,7 +250,6 @@ def build_sample_save_callback(cases, samples_path):
 
     return save_callback
 
-
 def sample_cases_with_incremental_save(cases, args, vllm_server_endpoints, samples_path):
     with open(samples_path, "w", encoding="utf-8"):
         pass
@@ -265,11 +259,9 @@ def sample_cases_with_incremental_save(cases, args, vllm_server_endpoints, sampl
     write_sample_results(samples_path, sampled_cases)
     return sampled_cases
 
-
 def main():
-    """中文：程序主入口，负责单 benchmark 的采样与评测流程。
-    English: Main entry point for single-benchmark sampling and evaluation.
-    """
+    # Main entry point for single-benchmark sampling and evaluation.
+    setup_logger()
     set_hf_cache()
     args = parse_args()
     config = load_config(args.config)
@@ -304,11 +296,11 @@ def main():
 
             results_path = os.path.join(args.output_dir, RESULTS_FILENAME)
             write_results(results_path, run_cases)
-            print(f"Results saved to: {results_path}")
+            logger.info(f"Results saved to: {results_path}")
 
             accuracy_path = os.path.join(args.output_dir, ACCURACY_FILENAME)
             write_accuracy(accuracy_path, run_cases)
-            print(f"Accuracy saved to: {accuracy_path}")
+            logger.info(f"Accuracy saved to: {accuracy_path}")
         elif args.sample_only:
             samples_path = os.path.join(args.output_dir, SAMPLES_FILENAME)
             if args.resume_sample:
@@ -328,7 +320,7 @@ def main():
                     vllm_server_endpoints,
                     samples_path,
                 )
-            print(f"Sample results saved to: {samples_path}")
+            logger.info(f"Sample results saved to: {samples_path}")
         else:
             samples_path = os.path.join(args.output_dir, SAMPLES_FILENAME)
             if args.resume_sample:
@@ -348,21 +340,20 @@ def main():
                     vllm_server_endpoints,
                     samples_path,
                 )
-            print(f"Sample results saved to: {samples_path}")
+            logger.info(f"Sample results saved to: {samples_path}")
 
             sandbox_config = build_sandbox_config(config)
             run_cases = evaluate_cases(sampled_cases, config["benchmark"], sandbox_config, args)
 
             results_path = os.path.join(args.output_dir, RESULTS_FILENAME)
             write_results(results_path, run_cases)
-            print(f"Results saved to: {results_path}")
+            logger.info(f"Results saved to: {results_path}")
 
             accuracy_path = os.path.join(args.output_dir, ACCURACY_FILENAME)
             write_accuracy(accuracy_path, run_cases)
-            print(f"Accuracy saved to: {accuracy_path}")
+            logger.info(f"Accuracy saved to: {accuracy_path}")
     finally:
         manager_holder["manager"] = cleanup_vllm_server(manager_holder["manager"])
-
 
 if __name__ == "__main__":
     main()

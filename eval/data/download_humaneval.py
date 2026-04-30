@@ -5,13 +5,18 @@ import sys
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+# Add parent directory to path to import logger
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 try:
     import pyarrow.parquet as pq
 except ImportError:
     pq = None
 
 from huggingface_hub import hf_hub_download
+from utils.logger import setup_logger, get_logger
 
+logger = get_logger(__name__)
 
 REPO_ID = "openai/openai_humaneval"
 REPO_TYPE = "dataset"
@@ -31,7 +36,6 @@ REQUIRED_FIELDS = {
     "entry_point",
 }
 
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Download openai/openai_humaneval and convert it to humaneval.jsonl."
@@ -44,7 +48,6 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
 def resolve_paths() -> tuple[Path, Path, Path]:
     script_dir = Path(__file__).resolve().parent
     cache_dir = script_dir / "hf_openai_humaneval"
@@ -54,12 +57,10 @@ def resolve_paths() -> tuple[Path, Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     return script_dir, cache_dir, output_path
 
-
 def configure_hf_endpoint(hf_endpoint: str | None) -> str:
     if hf_endpoint:
         return hf_endpoint
     return "https://huggingface.co"
-
 
 def download_parquet(cache_dir: Path, endpoint: str) -> Path:
     local_path = hf_hub_download(
@@ -71,7 +72,6 @@ def download_parquet(cache_dir: Path, endpoint: str) -> Path:
     )
     return Path(local_path)
 
-
 def load_parquet_rows(parquet_path: Path) -> list[dict]:
     if pq is None:
         raise RuntimeError("pyarrow is required to read the downloaded parquet file.")
@@ -80,7 +80,6 @@ def load_parquet_rows(parquet_path: Path) -> list[dict]:
     if not isinstance(rows, list):
         raise RuntimeError(f"Unexpected parquet payload type: {type(rows).__name__}")
     return rows
-
 
 def validate_rows(rows: list[dict]) -> None:
     if not rows:
@@ -105,7 +104,6 @@ def validate_rows(rows: list[dict]) -> None:
         if not isinstance(row['entry_point'], str):
             raise RuntimeError(f"Row {index} has non-str entry_point: {type(row['entry_point']).__name__}")
 
-
 def order_row(row: dict) -> dict:
     normalized = dict(row)
     normalized["id"] = normalized.pop("task_id")
@@ -115,7 +113,6 @@ def order_row(row: dict) -> dict:
         if key not in ordered:
             ordered[key] = normalized[key]
     return ordered
-
 
 def write_jsonl(rows: list[dict], output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -138,35 +135,34 @@ def write_jsonl(rows: list[dict], output_path: Path) -> None:
         if temp_path is not None and temp_path.exists():
             temp_path.unlink()
 
-
 def main() -> int:
+    setup_logger()
     args = parse_args()
     _, cache_dir, output_path = resolve_paths()
     endpoint = configure_hf_endpoint(args.hf_endpoint)
 
-    print(f"[HF] endpoint: {endpoint}")
-    print(f"[HF] dataset: {REPO_ID}")
-    print(f"[Paths] cache dir: {cache_dir}")
-    print(f"[Paths] output jsonl: {output_path}")
+    logger.info(f"endpoint: {endpoint}")
+    logger.info(f"dataset: {REPO_ID}")
+    logger.info(f"cache dir: {cache_dir}")
+    logger.info(f"output jsonl: {output_path}")
 
     parquet_path = download_parquet(cache_dir, endpoint)
-    print(f"[HF] local parquet: {parquet_path}")
+    logger.info(f"local parquet: {parquet_path}")
 
     rows = load_parquet_rows(parquet_path)
     validate_rows(rows)
     write_jsonl(rows, output_path)
 
-    print(f"[Done] rows: {len(rows)}")
-    print(f"[Done] wrote: {output_path}")
+    logger.info(f"rows: {len(rows)}")
+    logger.info(f"wrote: {output_path}")
     return 0
-
 
 if __name__ == '__main__':
     try:
         raise SystemExit(main())
     except KeyboardInterrupt:
-        print('Interrupted.', file=sys.stderr)
+        logger.error('Interrupted.')
         raise SystemExit(130)
     except Exception as exc:
-        print(f'Error: {exc}', file=sys.stderr)
+        logger.error(f'Error: {exc}')
         raise SystemExit(1)

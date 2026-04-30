@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-
 def set_hf_cache():
     os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
 

@@ -3,14 +3,18 @@ import shutil
 import sys
 from pathlib import Path
 
-from huggingface_hub import snapshot_download
+# Add parent directory to path to import logger
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from huggingface_hub import snapshot_download
+from utils.logger import setup_logger, get_logger
+
+logger = get_logger(__name__)
 
 REPO_ID = "m-a-p/AetherCode"
 REPO_TYPE = "dataset"
 ALLOWED_PATTERNS = ["README.md", "**/*.parquet"]
 PARQUET_GLOB = "test-*.parquet"
-
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -24,7 +28,6 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
 def resolve_paths() -> tuple[Path, Path, Path]:
     script_dir = Path(__file__).resolve().parent
     cache_dir = script_dir / "hf_aethercode"
@@ -33,12 +36,10 @@ def resolve_paths() -> tuple[Path, Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     return script_dir, cache_dir, output_dir
 
-
 def configure_hf_endpoint(hf_endpoint: str | None) -> str:
     if hf_endpoint:
         return hf_endpoint
     return "https://huggingface.co"
-
 
 def snapshot_repo(cache_dir: Path, endpoint: str) -> Path:
     local_path = snapshot_download(
@@ -49,7 +50,6 @@ def snapshot_repo(cache_dir: Path, endpoint: str) -> Path:
         allow_patterns=ALLOWED_PATTERNS,
     )
     return Path(local_path)
-
 
 def find_version_files(cache_dir: Path) -> dict[str, list[Path]]:
     version_files: dict[str, list[Path]] = {}
@@ -66,7 +66,6 @@ def find_version_files(cache_dir: Path) -> dict[str, list[Path]]:
         version_files.setdefault(version_name, []).append(parquet_path)
     return version_files
 
-
 def sync_version_parquet(version_name: str, parquet_files: list[Path], cache_dir: Path, output_dir: Path) -> None:
     version_dir = output_dir / version_name
     version_dir.mkdir(parents=True, exist_ok=True)
@@ -77,16 +76,16 @@ def sync_version_parquet(version_name: str, parquet_files: list[Path], cache_dir
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(parquet_path, destination)
 
-
 def main() -> int:
+    setup_logger()
     args = parse_args()
     _, cache_dir, output_dir = resolve_paths()
     endpoint = configure_hf_endpoint(args.hf_endpoint)
 
-    print(f"[HF] endpoint: {endpoint}")
-    print(f"[HF] dataset: {REPO_ID}")
-    print(f"[Paths] cache dir: {cache_dir}")
-    print(f"[Paths] output dir: {output_dir}")
+    logger.info(f"endpoint: {endpoint}")
+    logger.info(f"dataset: {REPO_ID}")
+    logger.info(f"cache dir: {cache_dir}")
+    logger.info(f"output dir: {output_dir}")
 
     snapshot_repo(cache_dir, endpoint)
     version_files = find_version_files(cache_dir)
@@ -99,19 +98,18 @@ def main() -> int:
     for version_name, parquet_files in sorted(version_files.items()):
         sync_version_parquet(version_name, parquet_files, cache_dir, output_dir)
         synced_files += len(parquet_files)
-        print(f"[Sync] {version_name}: {len(parquet_files)} parquet files")
+        logger.info(f"{version_name}: {len(parquet_files)} parquet files")
 
-    print(f"[Done] versions: {len(version_files)}")
-    print(f"[Done] synced parquet files: {synced_files}")
+    logger.info(f"versions: {len(version_files)}")
+    logger.info(f"synced parquet files: {synced_files}")
     return 0
-
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except KeyboardInterrupt:
-        print("Interrupted.", file=sys.stderr)
+        logger.error("Interrupted.")
         raise SystemExit(130)
     except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        logger.error(f"Error: {exc}")
         raise SystemExit(1)

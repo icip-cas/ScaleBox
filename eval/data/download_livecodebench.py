@@ -2,9 +2,12 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
-
 from huggingface_hub import hf_hub_download
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from utils.logger import setup_logger, get_logger
+logger = get_logger(__name__)
 
 REPO_ID = "livecodebench/code_generation_lite"
 REPO_TYPE = "dataset"
@@ -19,7 +22,6 @@ FILES_TO_DOWNLOAD = [
     "test6.jsonl",
 ]
 
-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Download livecodebench/code_generation_lite and build a local datasets directory."
@@ -32,7 +34,6 @@ def parse_args() -> argparse.Namespace:
     )
     return parser.parse_args()
 
-
 def resolve_paths() -> tuple[Path, Path, Path]:
     script_dir = Path(__file__).resolve().parent
     cache_dir = script_dir / "hf_livecodebench"
@@ -41,12 +42,10 @@ def resolve_paths() -> tuple[Path, Path, Path]:
     target_dir.mkdir(parents=True, exist_ok=True)
     return script_dir, cache_dir, target_dir
 
-
 def resolve_endpoint(hf_endpoint: str | None) -> str | None:
     if hf_endpoint:
         return hf_endpoint
     return None
-
 
 def resolve_downloaded_file(local_path: str, cache_dir: Path, filename: str) -> Path:
     path = Path(local_path)
@@ -61,7 +60,6 @@ def resolve_downloaded_file(local_path: str, cache_dir: Path, filename: str) -> 
         f"Downloaded file not found for {filename!r}: returned={path}, fallback={fallback}"
     )
 
-
 def download_file(filename: str, cache_dir: Path, endpoint: str | None) -> Path:
     local_path = hf_hub_download(
         repo_id=REPO_ID,
@@ -72,21 +70,20 @@ def download_file(filename: str, cache_dir: Path, endpoint: str | None) -> Path:
     )
     return resolve_downloaded_file(local_path, cache_dir, filename)
 
-
 def sync_file(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(src, dst)
 
-
 def main() -> int:
+    setup_logger()
     args = parse_args()
     _, cache_dir, target_dir = resolve_paths()
     endpoint = resolve_endpoint(args.hf_endpoint)
 
-    print(f"[HF] endpoint: {endpoint or 'https://huggingface.co'}")
-    print(f"[HF] dataset: {REPO_ID}")
-    print(f"[Paths] cache dir: {cache_dir}")
-    print(f"[Paths] target dir: {target_dir}")
+    logger.info(f"endpoint: {endpoint or 'https://huggingface.co'}")
+    logger.info(f"dataset: {REPO_ID}")
+    logger.info(f"cache dir: {cache_dir}")
+    logger.info(f"target dir: {target_dir}")
 
     synced = 0
     for filename in FILES_TO_DOWNLOAD:
@@ -94,22 +91,21 @@ def main() -> int:
         dst = target_dir / filename
         sync_file(src, dst)
         synced += 1
-        print(f"[Download] {filename} -> {dst}")
+        logger.info(f"{filename} -> {dst}")
 
     missing = [str(target_dir / name) for name in FILES_TO_DOWNLOAD if not (target_dir / name).exists()]
     if missing:
         raise RuntimeError(f"Missing files after sync: {missing}")
 
-    print(f"[Done] synced files: {synced}")
+    logger.info(f"synced files: {synced}")
     return 0
-
 
 if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except KeyboardInterrupt:
-        print("Interrupted.", file=sys.stderr)
+        logger.error("Interrupted.")
         raise SystemExit(130)
     except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        logger.error(f"Error: {exc}")
         raise SystemExit(1)
