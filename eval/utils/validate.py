@@ -121,25 +121,50 @@ def print_prompt_preview(cases, args):
 
 def check_sandbox_endpoint(url):
     # Send a minimal test request to the sandbox endpoint and check whether it is available.
-    payload = {
-        "completion": "```python\nimport re\ndef text_match_three(text):\n        patterns = 'ab{3}?'\n        return re.search(patterns,  text)\n```",
-        "config": {
+    from .evaluate import is_local_endpoint, is_run_code_endpoint, get_endpoint_path
+
+    if is_local_endpoint(url):
+        logger.info("[sandbox check] Using local evaluator mode; skipped remote endpoint health check.")
+        return
+
+    endpoint_path = get_endpoint_path(url)
+    is_run_code = is_run_code_endpoint(url)
+
+    if is_run_code:
+        payload = {
             "language": "python",
-            "provided_data": {
-                "test_cases": {
-                    "type": "assert",
-                    "test": "def check(text_match_three):\n    assert not text_match_three(\"abc\")",
-                    "entry_point": "text_match_three",
+            "code": "print(1 + 1)",
+            "run_timeout": 10,
+            "compile_timeout": 10,
+        }
+    else:
+        payload = {
+            "completion": "```python\nimport re\ndef text_match_three(text):\n        patterns = 'ab{3}?'\n        return re.search(patterns,  text)\n```",
+            "config": {
+                "language": "python",
+                "provided_data": {
+                    "test_cases": {
+                        "type": "assert",
+                        "test": "def check(text_match_three):\n    assert not text_match_three(\"abc\")",
+                        "entry_point": "text_match_three",
+                    },
                 },
             },
-        },
-    }
+        }
+
     try:
         response = requests.post(url, json=payload, timeout=30)
         response.raise_for_status()
         result = response.json()
         logger.info(json.dumps(result, indent=2, ensure_ascii=False))
-        assert result.get("accepted") is True, result
+
+        if is_run_code:
+            run_result = result.get("run_result") or {}
+            if result.get("status") != "Success" or str(run_result.get("stdout", "")).strip() != "2":
+                raise RuntimeError(f"Unexpected /run_code check result: {result}")
+        else:
+            if result.get("accepted") is not True:
+                raise RuntimeError(f"Unexpected /common_evaluate_batch check result: {result}")
     except Exception as e:
         logger.error(f"[sandbox check] {type(e).__name__}: {e} | url={url}")
         raise

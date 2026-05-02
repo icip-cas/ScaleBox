@@ -54,13 +54,23 @@ LCB_FORMATTING_MESSAGE_WITH_STARTER_CODE = "You will use the following starter c
 LCB_FORMATTING_WITHOUT_STARTER_CODE = "Read the inputs from stdin solve the problem and write the answer to stdout (do not directly test on the sample inputs). Enclose your code within delimiters as follows. Ensure that when the python program runs, it reads the inputs, runs the algorithm and writes output to STDOUT."
 
 LCB_LLAMA_PROMPT_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(__file__)),
-    "LiveCodeBench",
-    "lcb_runner",
-    "prompts",
+    os.path.dirname(__file__),
+    "livecodebench",
     "few_shot_examples",
     "generation",
 )
+
+def _resolve_lcb_llama_prompt_dir():
+    required_files = ("func.json", "stdin.json")
+    if all(os.path.isfile(os.path.join(LCB_LLAMA_PROMPT_DIR, file_name)) for file_name in required_files):
+        return LCB_LLAMA_PROMPT_DIR
+
+    raise FileNotFoundError(
+        "Could not find LiveCodeBench few-shot example files in: "
+        f"{LCB_LLAMA_PROMPT_DIR}"
+    )
+
+LCB_LLAMA_PROMPT_DIR = _resolve_lcb_llama_prompt_dir()
 
 def _load_lcb_llama_examples(file_name):
     with open(os.path.join(LCB_LLAMA_PROMPT_DIR, file_name), "r", encoding="utf-8") as file:

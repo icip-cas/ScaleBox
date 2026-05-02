@@ -85,7 +85,7 @@ For `multipl_e`: run `eval/data/download_multiple.py` manually, then set the `.j
   - `true`: Save the test pass rate.
   - `false`: Save a `0/1` score.
 - `save_full_scalebox_result`:
-  - `true`: Save the full ScaleBox response body in `results.jsonl`.
+  - `true`: Save the full ScaleBox response body in `results.json`.
   - `false`: Save only the summarized score in `scalebox`.
 - `extra`: Extra parameters passed through to the sandbox.
 
@@ -93,10 +93,10 @@ For `multipl_e`: run `eval/data/download_multiple.py` manually, then set the `.j
 
 - `output_dir`: Output directory.
 
-## 5. Output Files
+## 4. Output Files
 
 The program creates a result directory under `output.output_dir`. Common output files are:
 
-- `samples.jsonl`: Sampling results.
-- `results.jsonl`: Evaluation results.
+- `samples.jsonl`: Sampling results (used for resume).
+- `results.json`: Evaluation results (formatted JSON).
 - `accuracy.json`: Summary metrics.

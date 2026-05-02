@@ -1,0 +1,4 @@
+__pycache__/
+utils/*.backup*
+data/hf_openai_humaneval/
+data/openai_humaneval/

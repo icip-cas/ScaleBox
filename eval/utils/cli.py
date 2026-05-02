@@ -35,7 +35,7 @@ def build_arg_parser():
     argparser.add_argument("--mem_fraction", type=float, default=0.9, help="GPU/NPU memory utilization fraction")
     argparser.add_argument("--resume_sample", action="store_true", default=False, help="Resume sampling from an existing samples file")
     argparser.add_argument("--resume_sample_path", type=str, default=None, help="Path to the samples.jsonl file used for resume sampling")
-    argparser.add_argument("--save_full_scalebox_result", action="store_true", default=False, help="Save the full ScaleBox response body in results.jsonl instead of the summarized score")
+    argparser.add_argument("--save_full_scalebox_result", action="store_true", default=False, help="Save the full ScaleBox response body in results instead of the summarized score")
     return argparser
 
 def parse_args():

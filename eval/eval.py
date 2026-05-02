@@ -2,7 +2,9 @@ import json
 import os
 import signal
 import sys
+import tempfile
 from datetime import datetime
+from pathlib import Path
 
 import requests
 
@@ -241,6 +243,55 @@ def write_accuracy(output_path, cases):
     with open(output_path, "w", encoding="utf-8") as file:
         json.dump({"accuracy": accuracy_list, "mean_accuracy": mean_accuracy}, file, ensure_ascii=False, indent=2)
 
+def convert_jsonl_to_json(jsonl_path):
+    """Convert JSONL file to formatted JSON and delete the JSONL file.
+
+    Uses atomic write (temp file + os.replace) for safety.
+    Only logs warning if JSONL deletion fails (keeps the JSON result).
+    """
+    jsonl_path = Path(jsonl_path)
+    json_path = jsonl_path.with_suffix('.json')
+
+    try:
+        # Read all lines from JSONL
+        data = []
+        with open(jsonl_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if line:
+                    data.append(json.loads(line))
+
+        # Write to temporary file first (atomic write)
+        temp_fd, temp_path = tempfile.mkstemp(
+            suffix='.json',
+            dir=json_path.parent,
+            text=True
+        )
+        try:
+            with os.fdopen(temp_fd, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+
+            # Atomic replace
+            os.replace(temp_path, json_path)
+        except:
+            # Clean up temp file on failure
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+            raise
+
+        # Try to delete JSONL (only warning if fails)
+        try:
+            os.remove(jsonl_path)
+        except Exception as e:
+            logger.warning(
+                f"Successfully created {json_path}, but failed to delete {jsonl_path}: {e}"
+            )
+
+        return str(json_path)
+    except Exception as e:
+        logger.error(f"Failed to convert {jsonl_path} to JSON: {e}")
+        raise
+
 def build_sample_save_callback(cases, samples_path):
     def save_callback(index, samples, run_cases=cases):
         if not samples:
@@ -286,7 +337,8 @@ def main():
             vllm_server_endpoints = []
 
         cases = load_cases(args, config)
-        validate_unique_case_ids(cases)
+        if not args.eval_only:
+            validate_unique_case_ids(cases)
         print_prompt_preview(cases, args)
 
         if args.eval_only:
@@ -296,11 +348,14 @@ def main():
 
             results_path = os.path.join(args.output_dir, RESULTS_FILENAME)
             write_results(results_path, run_cases)
-            logger.info(f"Results saved to: {results_path}")
 
             accuracy_path = os.path.join(args.output_dir, ACCURACY_FILENAME)
             write_accuracy(accuracy_path, run_cases)
             logger.info(f"Accuracy saved to: {accuracy_path}")
+
+            # Convert results.jsonl to results.json and delete jsonl
+            results_json_path = convert_jsonl_to_json(results_path)
+            logger.info(f"Results saved to: {results_json_path}")
         elif args.sample_only:
             samples_path = os.path.join(args.output_dir, SAMPLES_FILENAME)
             if args.resume_sample:
@@ -347,11 +402,14 @@ def main():
 
             results_path = os.path.join(args.output_dir, RESULTS_FILENAME)
             write_results(results_path, run_cases)
-            logger.info(f"Results saved to: {results_path}")
 
             accuracy_path = os.path.join(args.output_dir, ACCURACY_FILENAME)
             write_accuracy(accuracy_path, run_cases)
             logger.info(f"Accuracy saved to: {accuracy_path}")
+
+            # Convert results.jsonl to results.json and delete jsonl
+            results_json_path = convert_jsonl_to_json(results_path)
+            logger.info(f"Results saved to: {results_json_path}")
     finally:
         manager_holder["manager"] = cleanup_vllm_server(manager_holder["manager"])
 
