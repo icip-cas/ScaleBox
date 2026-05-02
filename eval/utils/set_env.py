@@ -1,9 +1,8 @@
 import os
-
+from pathlib import Path
 
 def set_hf_cache():
     os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-    from pathlib import Path
 
     # Get the current working directory
     current_dir = Path.cwd()

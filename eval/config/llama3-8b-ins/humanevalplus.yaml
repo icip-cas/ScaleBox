@@ -1,0 +1,50 @@
+run:
+  sample_only: false
+  eval_only: false
+  eval_path: null
+  resume_sample: false
+  resume_sample_path: null
+  use_server: true
+  use_ray: false
+benchmark:
+  name: humanevalplus
+  data_path: null
+  version: null
+  begin_date: null
+  end_date: null
+  special_judge_file: null
+  language: null
+model:
+  model_path: meta-llama/Meta-Llama-3-8B-Instruct
+  model_name: Meta-Llama-3-8B-Instruct
+  prompt_type: llama3-instruct
+  thinking: false
+  num_gpus_total: 8
+  num_gpus_per_model: 1
+  npu: false
+  mem_fraction: 0.9
+  batch_size: 0
+  max_model_len: null
+  vllm_server:
+    base_port: 8000
+    host: 0.0.0.0
+    dtype: auto
+    wait_timeout: 600
+sampling:
+  temperature: 0
+  top_p: 0.8
+  top_k: 0
+  min_p: 0
+  max_completion_tokens: 8192
+  n_sample: 1
+  stop_token: null
+sandbox:
+  endpoint: http://<ip:port>/common_evaluate_batch
+  run_timeout: 10
+  compile_timeout: 10
+  total_timeout: 300
+  run_all_cases: false
+  save_full_scalebox_result: false
+  extra: {}
+output:
+  output_dir: res/Llama-3-8B-Instruct/humanevalplus
