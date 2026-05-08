@@ -874,10 +874,11 @@ Address [IP4]:[PORT4] is working
 
 ## 📝 Citation
 ```bibtex
-@software{scalebox_2025,
-  title = {scalebox},
-  url = {https://github.com/icip-cas/scalebox},
-  year = {2025}
+@article{zheng2026scalebox,
+  title={ScaleBox: Enabling High-Fidelity and Scalable Code Verification for Large Language Models},
+  author={Zheng, Jiasheng and Zheng, Xin and Cao, Boxi and Wang, Pengbo and Ma, Zhengzhao and Zhu, Qiming and Jiang, Jiazhen and Lu, Yaojie and Lin, Hongyu and Han, Xianpei and others},
+  journal={arXiv preprint arXiv:2604.27467},
+  year={2026}
 }
 ```
 
