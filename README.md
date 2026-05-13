@@ -10,7 +10,7 @@
 
 <a href="https://github.com/icip-cas/ScaleBox/stargazers"><img src="https://img.shields.io/github/stars/icip-cas/ScaleBox"></a>
 <a href="https://arxiv.org/abs/2604.27467"><img src="https://img.shields.io/badge/arXiv-2604.27467-b31b1b.svg"></a>
-<a href="https://quay.io/repository/jszheng/scalebox" title="Docker"><img src="https://img.shields.io/badge/docker-scalebox:x86-blue"></a>
+<a href="https://quay.io/repository/jszheng/scalebox" title="Docker"><img src="https://img.shields.io/badge/docker-scalebox:x86/arm64-blue"></a>
 <a href="https://github.com/icip-cas/ScaleBox/blob/main/LICENSE"><img src="https://img.shields.io/pypi/l/evalplus"></a>
 </div>
 
