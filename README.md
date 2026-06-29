@@ -874,11 +874,29 @@ Address [IP4]:[PORT4] is working
 
 ## 📝 Citation
 ```bibtex
-@article{zheng2026scalebox,
-  title={ScaleBox: Enabling High-Fidelity and Scalable Code Verification for Large Language Models},
-  author={Zheng, Jiasheng and Zheng, Xin and Cao, Boxi and Wang, Pengbo and Ma, Zhengzhao and Zhu, Qiming and Jiang, Jiazhen and Lu, Yaojie and Lin, Hongyu and Han, Xianpei and others},
-  journal={arXiv preprint arXiv:2604.27467},
-  year={2026}
+@inproceedings{zheng-etal-2026-scalebox,
+    title = "{S}cale{B}ox: Enabling High-Fidelity and Scalable Code Verification for Large Language Models",
+    author = "Zheng, Jiasheng  and
+      Zheng, Xin  and
+      Cao, Boxi  and
+      Wang, Pengbo  and
+      Ma, Zhengzhao  and
+      Zhu, Qiming  and
+      Jiang, Jiazhen  and
+      Lu, Yaojie  and
+      Lin, Hongyu  and
+      Han, Xianpei  and
+      Sun, Le",
+    editor = "Durrett, Greg  and
+      Jian, Ping",
+    booktitle = "Proceedings of the 64th Annual Meeting of the {A}ssociation for {C}omputational {L}inguistics (Volume 3: System Demonstrations)",
+    month = jul,
+    year = "2026",
+    address = "San Diego, California, United States",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2026.acl-demo.30/",
+    pages = "307--317",
+    ISBN = "979-8-89176-392-0"
 }
 ```
 
